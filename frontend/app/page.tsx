@@ -67,18 +67,22 @@ export default function ChatWorkspacePage() {
         setActiveConvId(list[0].id);
       }
     } catch (err: any) {
-      console.error("Failed to load conversations:", err);
+      console.warn("Failed to load conversations from backend:", err);
     }
   }, [activeConvId]);
 
   useEffect(() => {
-    if (user) {
+    if (user || api.getToken()) {
       loadConversations();
     }
   }, [user, loadConversations]);
 
   // Load message history when active conversation changes
   const loadMessages = useCallback(async (convId: string) => {
+    if (!convId || convId.startsWith("local-")) {
+      setMessages([]);
+      return;
+    }
     setLoadingConv(true);
     setError(null);
     try {
@@ -101,14 +105,37 @@ export default function ChatWorkspacePage() {
   }, [activeConvId, loadMessages]);
 
   const handleNewChat = async () => {
+    // If already on an empty thread, just focus input
+    if (activeConvId && messages.length === 0) {
+      setInputQuery("");
+      textareaRef.current?.focus();
+      return;
+    }
+
+    setError(null);
     try {
       const newConv = await api.createConversation("New Conversation");
-      setConversations((prev) => [newConv, ...prev]);
+      setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== newConv.id)]);
       setActiveConvId(newConv.id);
       setMessages([]);
       setInputQuery("");
+      setTimeout(() => textareaRef.current?.focus(), 50);
     } catch (err: any) {
-      setError(err.message || "Failed to create conversation.");
+      console.warn("Backend conversation creation deferred, initializing local session:", err);
+      const localId = "local-" + Date.now();
+      const localConv: ConversationItem = {
+        id: localId,
+        title: "New Conversation",
+        org_id: org?.id || "default",
+        user_id: user?.id || "default",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setConversations((prev) => [localConv, ...prev]);
+      setActiveConvId(localId);
+      setMessages([]);
+      setInputQuery("");
+      setTimeout(() => textareaRef.current?.focus(), 50);
     }
   };
 
@@ -120,7 +147,9 @@ export default function ChatWorkspacePage() {
     if (!window.confirm("Delete this conversation thread?")) return;
 
     try {
-      await api.deleteConversation(convId);
+      if (!convId.startsWith("local-")) {
+        await api.deleteConversation(convId);
+      }
       setConversations((prev) => prev.filter((c) => c.id !== convId));
       if (activeConvId === convId) {
         setActiveConvId(null);
@@ -140,19 +169,24 @@ export default function ChatWorkspacePage() {
     setSending(true);
     setInputQuery("");
 
-    // Create conversation on the fly if none is active
+    // If activeConversationId is null or a local placeholder,
+    // automatically create a new conversation first, set it as active, and then send the message.
     let currentConvId = activeConvId;
-    if (!currentConvId) {
+    if (!currentConvId || currentConvId.startsWith("local-")) {
       try {
-        const created = await api.createConversation(
-          query.slice(0, 30) + (query.length > 30 ? "..." : "")
-        );
+        const titleSnippet =
+          query.slice(0, 30) + (query.length > 30 ? "..." : "");
+        const created = await api.createConversation(titleSnippet);
         currentConvId = created.id;
         setActiveConvId(created.id);
-        setConversations((prev) => [created, ...prev]);
+        setConversations((prev) => [
+          created,
+          ...prev.filter((c) => c.id !== currentConvId && !c.id.startsWith("local-")),
+        ]);
       } catch (err: any) {
-        setError(err.message || "Failed to start conversation.");
+        setError(err.message || "Failed to start conversation. Please check backend connection.");
         setSending(false);
+        setInputQuery(query);
         return;
       }
     }
@@ -247,6 +281,8 @@ export default function ChatWorkspacePage() {
         {/* New Chat Button */}
         <div className="p-3">
           <button
+            id="btn-new-conversation"
+            type="button"
             onClick={handleNewChat}
             className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition-all cursor-pointer"
           >
@@ -471,6 +507,7 @@ export default function ChatWorkspacePage() {
             className="max-w-4xl mx-auto relative"
           >
             <textarea
+              id="chat-query-input"
               ref={textareaRef}
               rows={2}
               value={inputQuery}
@@ -486,6 +523,7 @@ export default function ChatWorkspacePage() {
             />
 
             <button
+              id="btn-send-message"
               type="submit"
               disabled={!inputQuery.trim() || sending}
               className="absolute right-3.5 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white disabled:opacity-40 disabled:hover:from-cyan-500 disabled:hover:to-indigo-600 transition-all shadow-md shadow-cyan-500/20 cursor-pointer"
