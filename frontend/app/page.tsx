@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Trash2,
   ArrowUp,
+  ArrowDown,
   Layers,
   LogOut,
   Cpu,
@@ -24,7 +25,6 @@ import {
   Sparkles,
   AlertCircle,
   Search,
-  FileText,
   PanelLeft,
 } from "lucide-react";
 
@@ -39,6 +39,7 @@ export default function ChatWorkspacePage() {
   const [sending, setSending] = useState(false);
   const [inputQuery, setInputQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   // Citation Drawer state
   const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(
@@ -50,10 +51,24 @@ export default function ChatWorkspacePage() {
   >([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTo({
+        top: chatScrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const atBottom = scrollHeight - scrollTop - clientHeight < 60;
+    setIsAtBottom(atBottom);
   };
 
   useEffect(() => {
@@ -333,38 +348,30 @@ export default function ChatWorkspacePage() {
           </kbd>
         </div>
 
-        {/* Right Section: Enterprise Status & Utilities */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {/* Engine Status Pill */}
-          <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full shadow-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Hybrid RAG Online</span>
+        {/* Right Section: Clean, Minimalist Enterprise Utilities */}
+        <div className="flex items-center gap-3 shrink-0">
+          {/* System Status (Subtle) */}
+          <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400 font-normal mr-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span>Operational</span>
           </div>
 
-          {/* Tenant Security Pill */}
-          <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-mono text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full shadow-xs">
-            <ShieldCheck className="w-3 h-3 text-emerald-500" />
-            <span>Isolated Tenant</span>
-          </div>
-
-          {/* Quick Navigation Links: Documents Admin */}
+          {/* Document Management Link */}
           <Link
             href="/documents"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 transition-all cursor-pointer shadow-xs"
-            title="Open Document Administration"
+            className="text-xs font-medium text-zinc-300 hover:text-white px-3 py-1.5 rounded-md hover:bg-zinc-900 transition-colors"
           >
-            <FileText className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">Documents Admin</span>
+            Documents
           </Link>
 
-          {/* User Profile Initial & ADMIN role badge */}
-          <div className="flex items-center gap-1.5 pl-1.5 border-l border-zinc-800/80">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border border-indigo-400/30 flex items-center justify-center text-[11px] font-bold text-white shadow-xs">
-              {user?.email ? user.email[0].toUpperCase() : "A"}
+          {/* Vertical Divider */}
+          <div className="h-4 w-px bg-zinc-850"></div>
+
+          {/* User Profile Avatar & Dropdown */}
+          <div className="flex items-center gap-2.5 pl-1 cursor-pointer">
+            <div className="w-8 h-8 rounded-full bg-zinc-800 text-zinc-200 border border-zinc-750 flex items-center justify-center text-xs font-medium">
+              {user?.email?.charAt(0).toUpperCase() || "U"}
             </div>
-            <span className="text-[10px] font-mono uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
-              {user?.role?.toUpperCase() || "ADMIN"}
-            </span>
           </div>
         </div>
       </header>
@@ -489,7 +496,11 @@ export default function ChatWorkspacePage() {
         {/* ======================================================================= */}
         <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#090a0f] relative min-w-0">
           {/* Centered Message Feed */}
-          <div className="flex-1 flex flex-col items-center overflow-y-auto px-4 py-6 pb-32 w-full">
+          <div
+            ref={chatScrollRef}
+            onScroll={handleScroll}
+            className="flex-1 flex flex-col items-center overflow-y-auto px-4 py-6 pb-28 w-full"
+          >
             <div className="w-full max-w-2xl lg:max-w-3xl mx-auto space-y-6">
               {error && (
                 <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs flex items-center gap-2">
@@ -571,9 +582,15 @@ export default function ChatWorkspacePage() {
           </div>
 
           {/* ===================================================================== */}
-          {/* SLEEK FLOATING PROMPT BAR: Centered with Matching Max-Width          */}
+          {/* SLEEK FLOATING PROMPT BAR: Auto-hides on Scroll Up                   */}
           {/* ===================================================================== */}
-          <div className="absolute bottom-5 inset-x-0 w-full max-w-2xl lg:max-w-3xl mx-auto px-4 z-30 pointer-events-none">
+          <div
+            className={`absolute bottom-5 inset-x-0 w-full max-w-2xl lg:max-w-3xl mx-auto px-4 z-30 transition-all duration-300 ease-out ${
+              isAtBottom
+                ? "translate-y-0 opacity-100 pointer-events-auto"
+                : "translate-y-24 opacity-0 pointer-events-none"
+            }`}
+          >
             <form
               onSubmit={handleSendMessage}
               className="pointer-events-auto bg-zinc-900/80 backdrop-blur-md border border-zinc-800/90 rounded-2xl p-2 shadow-2xl transition-all focus-within:border-zinc-700/90 focus-within:ring-1 focus-within:ring-zinc-700/50"
@@ -629,6 +646,27 @@ export default function ChatWorkspacePage() {
               </div>
             </form>
           </div>
+
+          {/* ===================================================================== */}
+          {/* SCROLL TO BOTTOM PILL: Appears when user scrolls up                   */}
+          {/* ===================================================================== */}
+          {!isAtBottom && (
+            <div className="absolute bottom-5 inset-x-0 flex justify-center z-30 pointer-events-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  chatScrollRef.current?.scrollTo({
+                    top: chatScrollRef.current.scrollHeight,
+                    behavior: "smooth",
+                  });
+                }}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 rounded-full px-3.5 py-1.5 text-xs shadow-lg flex items-center gap-1.5 cursor-pointer animate-fade-in transition-colors"
+              >
+                <ArrowDown className="w-3.5 h-3.5" />
+                <span>Scroll to bottom</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
