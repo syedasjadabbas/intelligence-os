@@ -3,7 +3,7 @@
 import React from "react";
 import { MessageItem, CitationItem } from "@/lib/api";
 import { PipelineTrace } from "@/components/pipeline-trace";
-import { Cpu, User, Bookmark, ExternalLink } from "lucide-react";
+import { Sparkles, ExternalLink, Bookmark } from "lucide-react";
 
 interface ChatMessageProps {
   message: MessageItem;
@@ -13,36 +13,44 @@ interface ChatMessageProps {
 export function ChatMessage({ message, onSelectCitation }: ChatMessageProps) {
   const isUser = message.role === "user";
 
-  // Parse text to render [Source X] as clickable buttons
+  // Parse text to render [Source X] as clickable footnote pills
   const renderFormattedContent = (content: string, citations: CitationItem[] = []) => {
-    // Regex matching [Source X]
-    const parts = content.split(/(\[Source\s+\d+\])/g);
+    const parts = content.split(/(\[Source\s+\d+\]|\[\d+\])/gi);
 
     return parts.map((part, index) => {
-      const match = part.match(/\[Source\s+(\d+)\]/i);
+      const match = part.match(/\[(?:Source\s+)?(\d+)\]/i);
       if (match) {
         const sourceIndex = parseInt(match[1], 10);
         const matchingCitation = citations.find(
           (c) => c.source_index === sourceIndex
         );
 
+        const shortLabel = matchingCitation
+          ? `${matchingCitation.document_title.replace(/\.[^/.]+$/, "").slice(0, 14)}${
+              matchingCitation.page_number ? ` p.${matchingCitation.page_number}` : ""
+            }`
+          : `${sourceIndex}`;
+
         return (
           <button
             key={index}
+            type="button"
             onClick={() => {
               if (matchingCitation) {
                 onSelectCitation(matchingCitation);
               }
             }}
-            className="inline-flex items-center gap-0.5 mx-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 hover:border-cyan-400 hover:text-cyan-200 transition-all shadow-sm cursor-pointer align-baseline"
+            className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 border border-zinc-800 hover:border-zinc-700 transition-all cursor-pointer align-baseline shadow-xs"
             title={
               matchingCitation
                 ? `${matchingCitation.document_title} (Page ${matchingCitation.page_number || "N/A"})`
                 : `Inspect Source ${sourceIndex}`
             }
           >
-            <Bookmark className="w-2.5 h-2.5 inline mr-0.5 text-cyan-400" />
-            Source {sourceIndex}
+            <span className="text-indigo-400 font-semibold">[{sourceIndex}]</span>
+            <span className="truncate max-w-[120px] text-zinc-400 font-sans">
+              {shortLabel}
+            </span>
           </button>
         );
       }
@@ -50,69 +58,68 @@ export function ChatMessage({ message, onSelectCitation }: ChatMessageProps) {
     });
   };
 
+  // User Message: Subtle elevated card aligned right
   if (isUser) {
     return (
-      <div className="flex justify-end gap-3 mb-6">
-        <div className="max-w-[75%] rounded-2xl rounded-tr-sm bg-gradient-to-r from-cyan-600 to-indigo-600 text-white p-4 shadow-lg shadow-cyan-600/15">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-            {message.content}
-          </p>
-        </div>
-        <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300">
-          <User className="w-4 h-4" />
+      <div className="flex justify-end mb-6">
+        <div className="bg-zinc-900/90 border border-zinc-800 text-zinc-100 rounded-2xl px-4 py-3 max-w-[80%] text-sm shadow-md leading-relaxed whitespace-pre-wrap tracking-tight">
+          {message.content}
         </div>
       </div>
     );
   }
 
+  // Assistant Response: Seamless flat layout with clean avatar icon & no bulky borders
   return (
-    <div className="flex justify-start gap-3.5 mb-8">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-md shadow-cyan-500/20 text-white mt-1">
-        <Cpu className="w-4 h-4" />
+    <div className="flex items-start gap-3.5 mb-8 text-zinc-100">
+      {/* Clean Modern Assistant Icon */}
+      <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800/90 flex items-center justify-center shrink-0 text-indigo-400 mt-1 shadow-xs">
+        <Sparkles className="w-3.5 h-3.5" />
       </div>
 
-      <div className="flex-1 max-w-[85%]">
-        <div className="glass-card rounded-2xl rounded-tl-sm p-5 shadow-xl border border-white/10">
-          {/* Answer Body */}
-          <div className="text-sm leading-relaxed text-slate-200 font-sans whitespace-pre-wrap">
-            {renderFormattedContent(message.content, message.citations)}
-          </div>
-
-          {/* Source Badges Row if citations exist */}
-          {message.citations && message.citations.length > 0 && (
-            <div className="mt-4 pt-3.5 border-t border-white/5 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Grounded Citations:
-              </span>
-              {message.citations.map((c, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onSelectCitation(c)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer font-medium"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                  <span className="font-semibold text-cyan-300">
-                    [Source {c.source_index}]
-                  </span>
-                  <span className="text-slate-400 truncate max-w-[140px]">
-                    {c.document_title}
-                  </span>
-                  {c.page_number && (
-                    <span className="text-[10px] text-slate-500">
-                      p.{c.page_number}
-                    </span>
-                  )}
-                  <ExternalLink className="w-3 h-3 text-slate-400 ml-0.5" />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Telemetry Trace */}
-          {message.trace_data && (
-            <PipelineTrace trace={message.trace_data} />
-          )}
+      <div className="flex-1 min-w-0 max-w-full">
+        {/* Answer Body - Seamless flat layout */}
+        <div className="text-sm leading-relaxed text-zinc-200 tracking-tight whitespace-pre-wrap selection:bg-indigo-500/20">
+          {renderFormattedContent(message.content, message.citations)}
         </div>
+
+        {/* Micro Badges for Citations & Guardrails */}
+        {message.citations && message.citations.length > 0 && (
+          <div className="mt-3.5 flex flex-wrap items-center gap-2">
+            {/* Status chip */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/90 border border-zinc-800/90 text-zinc-400 text-xs font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>
+                Verified • {message.citations.length}{" "}
+                {message.citations.length === 1 ? "source" : "sources"}
+              </span>
+            </span>
+
+            {/* Footnote tags */}
+            {message.citations.map((c, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSelectCitation(c)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/70 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 border border-zinc-800/80 hover:border-zinc-700 text-xs font-mono transition-all cursor-pointer group shadow-xs"
+              >
+                <span className="text-indigo-400 font-semibold">[{c.source_index}]</span>
+                <span className="truncate max-w-[140px] text-zinc-300 font-sans">
+                  {c.document_title}
+                </span>
+                {c.page_number && (
+                  <span className="text-zinc-500 text-[10px]">p.{c.page_number}</span>
+                )}
+                <ExternalLink className="w-2.5 h-2.5 text-zinc-500 group-hover:text-zinc-300 ml-0.5" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Telemetry Drawer */}
+        {message.trace_data && (
+          <PipelineTrace trace={message.trace_data} />
+        )}
       </div>
     </div>
   );

@@ -67,7 +67,8 @@ async def get_redis() -> AsyncGenerator[aioredis.Redis, None]:
             settings.REDIS_URL,
             encoding="utf-8",
             decode_responses=True,
-            socket_timeout=1.0,
+            socket_timeout=0.5,
+            socket_connect_timeout=0.5,
         )
         await client.ping()
         try:

@@ -12,23 +12,24 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setIsLoading(true);
 
     try {
       await login({ email, password });
-      router.push("/");
+      setIsLoading(false);
+      window.location.href = "/";
     } catch (err: any) {
+      setIsLoading(false);
       setError(
-        err?.message || "Unable to reach the server. Please verify the backend is running."
+        err?.message || "Login failed or request timed out. Please verify your credentials and ensure the backend is running."
       );
     } finally {
-      // Guaranteed to re-enable button and reset submission state
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -123,10 +124,10 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium rounded-xl text-sm shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {loading ? (
+              {isLoading ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Signing In...</span>

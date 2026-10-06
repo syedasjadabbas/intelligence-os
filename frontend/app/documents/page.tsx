@@ -169,22 +169,22 @@ export default function DocumentsPage() {
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col">
       {/* Navigation Header */}
-      <header className="border-b border-white/10 bg-[#0d1424] px-6 py-4 flex items-center justify-between sticky top-0 z-30">
+      <header className="border-b border-slate-800 bg-[#0d131f] px-6 py-3.5 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <Link
             href="/"
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+            className="p-1.5 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors flex items-center gap-1.5 text-xs font-medium cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 text-slate-400" />
             <span>Back to Chat</span>
           </Link>
           <div className="h-5 w-px bg-slate-800" />
           <div>
-            <h1 className="text-lg font-bold text-white flex items-center gap-2">
-              <Layers className="w-5 h-5 text-cyan-400" />
+            <h1 className="text-base font-semibold text-white flex items-center gap-2">
+              <Layers className="w-4 h-4 text-slate-300" />
               Document Admin Console
             </h1>
-            <p className="text-xs text-slate-400">
+            <p className="text-[11px] text-slate-400">
               Manage organization knowledge store, chunking, and pgvector embeddings
             </p>
           </div>
@@ -192,15 +192,15 @@ export default function DocumentsPage() {
 
         <div className="flex items-center gap-3">
           {org && (
-            <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5 text-indigo-400" />
+            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-slate-400" />
               <span className="text-slate-400">Tenant:</span>
               <span className="font-semibold text-white">{org.name}</span>
             </div>
           )}
           <button
             onClick={() => fetchDocuments()}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer border border-slate-700/60"
             title="Refresh documents"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -209,11 +209,11 @@ export default function DocumentsPage() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-8">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
         {/* Upload Card */}
-        <div className="glass-card rounded-2xl p-6 border border-white/10 shadow-xl">
-          <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-            <UploadCloud className="w-4 h-4 text-cyan-400" />
+        <div className="rounded-xl p-6 border border-slate-800 bg-slate-900/60 shadow-sm">
+          <h2 className="text-sm font-semibold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+            <UploadCloud className="w-4 h-4 text-slate-300" />
             Ingest Knowledge Document
           </h2>
           <p className="text-xs text-slate-400 mb-4">
@@ -233,10 +233,10 @@ export default function DocumentsPage() {
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
+            className={`border border-dashed rounded-xl p-8 text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
               dragActive
-                ? "border-cyan-400 bg-cyan-500/10 scale-[1.01]"
-                : "border-slate-700/80 bg-slate-900/40 hover:border-slate-600 hover:bg-slate-900/60"
+                ? "border-blue-500 bg-blue-500/10 scale-[1.01]"
+                : "border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-900/60"
             }`}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -252,11 +252,11 @@ export default function DocumentsPage() {
               }}
             />
 
-            <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-3 shadow-inner">
+            <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-300 mb-3 shadow-sm">
               {uploading ? (
-                <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-slate-500 border-t-white rounded-full animate-spin" />
               ) : (
-                <UploadCloud className="w-7 h-7" />
+                <UploadCloud className="w-6 h-6 text-slate-300" />
               )}
             </div>
 
@@ -267,17 +267,17 @@ export default function DocumentsPage() {
             </p>
             <p className="text-xs text-slate-400 max-w-sm">
               Maximum file size: 20MB. Document chunks will be isolated exclusively to{" "}
-              <span className="text-cyan-400 font-medium">{org?.name || "your organization"}</span>.
+              <span className="text-slate-200 font-medium">{org?.name || "your organization"}</span>.
             </p>
           </div>
         </div>
 
         {/* Documents Table */}
-        <div className="glass-card rounded-2xl border border-white/10 shadow-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-slate-900/40">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/60 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
             <div className="flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-cyan-400" />
-              <h3 className="font-bold text-white text-sm">Indexed Documents</h3>
+              <FileCheck className="w-4 h-4 text-slate-300" />
+              <h3 className="font-semibold text-white text-sm">Indexed Documents</h3>
               <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
                 {documents.length}
               </span>

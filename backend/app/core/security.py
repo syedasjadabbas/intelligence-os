@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Union
 import uuid
@@ -15,9 +16,25 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a plain-text password against a hashed password asynchronously,
+    offloading CPU-bound bcrypt execution to a worker thread so the async event loop is never blocked.
+    """
+    return await asyncio.to_thread(verify_password, plain_password, hashed_password)
+
+
 def get_password_hash(password: str) -> str:
     """Generate a bcrypt hash of a plain-text password."""
     return pwd_context.hash(password)
+
+
+async def get_password_hash_async(password: str) -> str:
+    """
+    Generate a bcrypt hash asynchronously, offloading CPU-bound work
+    to a worker thread so the async event loop is never blocked.
+    """
+    return await asyncio.to_thread(get_password_hash, password)
 
 
 def create_access_token(

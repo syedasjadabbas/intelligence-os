@@ -15,15 +15,16 @@ import {
   Plus,
   MessageSquare,
   Trash2,
-  Send,
+  ArrowUp,
   Layers,
   LogOut,
   Cpu,
   Building2,
-  Shield,
+  ShieldCheck,
   Sparkles,
   Bot,
   AlertCircle,
+  Command,
 } from "lucide-react";
 
 export default function ChatWorkspacePage() {
@@ -57,12 +58,22 @@ export default function ChatWorkspacePage() {
     scrollToBottom();
   }, [messages, sending]);
 
+  // Auto-resize textarea height as query expands
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(
+        textareaRef.current.scrollHeight,
+        180
+      )}px`;
+    }
+  }, [inputQuery]);
+
   // Load user's conversations
   const loadConversations = useCallback(async () => {
     try {
       const list = await api.listConversations();
       setConversations(list);
-      // Auto-select latest conversation if none selected
       if (!activeConvId && list.length > 0) {
         setActiveConvId(list[0].id);
       }
@@ -105,7 +116,6 @@ export default function ChatWorkspacePage() {
   }, [activeConvId, loadMessages]);
 
   const handleNewChat = async () => {
-    // If already on an empty thread, just focus input
     if (activeConvId && messages.length === 0) {
       setInputQuery("");
       textareaRef.current?.focus();
@@ -114,7 +124,7 @@ export default function ChatWorkspacePage() {
 
     setError(null);
     try {
-      const newConv = await api.createConversation("New Conversation");
+      const newConv = await api.createConversation("New Thread");
       setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== newConv.id)]);
       setActiveConvId(newConv.id);
       setMessages([]);
@@ -125,7 +135,7 @@ export default function ChatWorkspacePage() {
       const localId = "local-" + Date.now();
       const localConv: ConversationItem = {
         id: localId,
-        title: "New Conversation",
+        title: "New Thread",
         org_id: org?.id || "default",
         user_id: user?.id || "default",
         created_at: new Date().toISOString(),
@@ -160,22 +170,23 @@ export default function ChatWorkspacePage() {
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const query = inputQuery.trim();
     if (!query || sending) return;
 
     setError(null);
     setSending(true);
     setInputQuery("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
 
-    // If activeConversationId is null or a local placeholder,
-    // automatically create a new conversation first, set it as active, and then send the message.
     let currentConvId = activeConvId;
     if (!currentConvId || currentConvId.startsWith("local-")) {
       try {
         const titleSnippet =
-          query.slice(0, 30) + (query.length > 30 ? "..." : "");
+          query.slice(0, 32) + (query.length > 32 ? "..." : "");
         const created = await api.createConversation(titleSnippet);
         currentConvId = created.id;
         setActiveConvId(created.id);
@@ -191,7 +202,6 @@ export default function ChatWorkspacePage() {
       }
     }
 
-    // Optimistically add user message
     const tempUserMsg: MessageItem = {
       id: "temp-" + Date.now(),
       conversation_id: currentConvId,
@@ -218,14 +228,13 @@ export default function ChatWorkspacePage() {
 
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // Update conversation title in list if updated
       setConversations((prev) =>
         prev.map((c) =>
           c.id === currentConvId
             ? {
                 ...c,
                 title:
-                  c.title === "New Conversation"
+                  c.title === "New Thread" || c.title === "New Conversation"
                     ? query.slice(0, 35) + "..."
                     : c.title,
                 updated_at: new Date().toISOString(),
@@ -253,53 +262,60 @@ export default function ChatWorkspacePage() {
   const promptSuggestions = [
     "What core material catalyzes cold fusion in the Arc Reactor?",
     "What fluid cools it during emergency shutdown?",
-    "What is the radioactive half-life decay rate of Kryptonite in Gotham City?",
-    "Describe the autonomous drone avionics and swarm flight tactics.",
+    "What is the radioactive half-life decay rate of Kryptonite?",
+    "Summarize the autonomous drone avionics and swarm tactics.",
   ];
 
+  const activeConv = conversations.find((c) => c.id === activeConvId);
+
   return (
-    <div className="flex h-screen bg-[#070b14] overflow-hidden text-slate-100">
+    <div className="flex h-screen bg-[#090a0f] text-zinc-100 font-sans antialiased overflow-hidden selection:bg-indigo-500/25 selection:text-indigo-200">
       {/* ========================================================================= */}
-      {/* LEFT SIDEBAR: Conversation History & Tenant Controls */}
+      {/* SIDEBAR: Linear / Perplexity Minimalist Hierarchy                        */}
       {/* ========================================================================= */}
-      <aside className="w-72 bg-[#0c1322] border-r border-white/10 flex flex-col shrink-0">
-        {/* Workspace Brand Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-900/60">
+      <aside className="w-64 lg:w-72 bg-[#0c0d14] border-r border-zinc-800/70 flex flex-col shrink-0">
+        {/* Brand Header */}
+        <div className="p-4 border-b border-zinc-800/70 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/20">
-              <Cpu className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-indigo-400 shadow-xs">
+              <Cpu className="w-3.5 h-3.5" />
             </div>
             <div>
-              <h2 className="font-extrabold text-sm tracking-tight text-white">
-                Intelligence <span className="text-cyan-400">OS</span>
+              <h2 className="font-semibold text-xs tracking-tight text-zinc-100 flex items-center gap-1">
+                Intelligence <span className="text-zinc-500 font-normal">OS</span>
               </h2>
-              <p className="text-[10px] text-slate-400 font-mono">v0.1.0 • Multi-Tenant</p>
+              <p className="text-[10px] text-zinc-500 font-mono tracking-tight">Enterprise RAG</p>
             </div>
           </div>
         </div>
 
-        {/* New Chat Button */}
+        {/* New Thread CTA */}
         <div className="p-3">
           <button
             id="btn-new-conversation"
             type="button"
             onClick={handleNewChat}
-            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition-all cursor-pointer"
+            className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800/80 text-zinc-200 hover:text-white border border-zinc-800 hover:border-zinc-700 font-medium text-xs flex items-center justify-between transition-all duration-150 cursor-pointer shadow-xs group"
           >
-            <Plus className="w-4 h-4" />
-            <span>New Conversation</span>
+            <div className="flex items-center gap-2">
+              <Plus className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200" />
+              <span>New Thread</span>
+            </div>
+            <span className="text-[10px] font-mono text-zinc-500 group-hover:text-zinc-400 border border-zinc-800 px-1.5 py-0.2 rounded bg-zinc-950/60">
+              ⌘N
+            </span>
           </button>
         </div>
 
         {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto px-2 space-y-1">
-          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-            Conversations
+        <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
+          <div className="px-2.5 py-1.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+            Recent Threads
           </div>
 
           {conversations.length === 0 ? (
-            <div className="p-4 text-center text-xs text-slate-400">
-              No conversations yet. Start one above!
+            <div className="p-4 text-center text-xs text-zinc-500">
+              No conversations yet.
             </div>
           ) : (
             conversations.map((conv) => {
@@ -308,29 +324,29 @@ export default function ChatWorkspacePage() {
                 <div
                   key={conv.id}
                   onClick={() => setActiveConvId(conv.id)}
-                  className={`group relative flex items-center justify-between p-2.5 rounded-xl text-xs cursor-pointer transition-all ${
+                  className={`group relative flex items-center justify-between py-2 px-2.5 rounded-lg text-xs cursor-pointer transition-all duration-150 ${
                     isActive
-                      ? "bg-slate-800 text-white border border-cyan-500/30 shadow-md shadow-cyan-500/5 font-medium"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                      ? "bg-zinc-900 text-zinc-100 border-l-2 border-indigo-500 shadow-xs font-medium"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-l-2 border-transparent"
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
                     <MessageSquare
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isActive ? "text-cyan-400" : "text-slate-400"
+                        isActive ? "text-indigo-400" : "text-zinc-500"
                       }`}
                     />
-                    <span className="truncate max-w-[170px]">
+                    <span className="truncate max-w-[160px] tracking-tight">
                       {conv.title || "Untitled Session"}
                     </span>
                   </div>
 
                   <button
                     onClick={(e) => handleDeleteConversation(e, conv.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-400 text-slate-500 transition-opacity cursor-pointer"
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-400 text-zinc-500 transition-opacity cursor-pointer"
                     title="Delete thread"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
               );
@@ -338,89 +354,82 @@ export default function ChatWorkspacePage() {
           )}
         </div>
 
-        {/* Bottom Tenant & User Section */}
-        <div className="p-3 border-t border-white/10 bg-slate-900/60 space-y-2">
-          {/* Tenant Badge */}
+        {/* Refined User & Tenant Pill at Bottom Left */}
+        <div className="p-3 border-t border-zinc-800/70 bg-[#0c0d14] space-y-2">
           {org && (
-            <div className="px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
+            <div className="px-2.5 py-1.5 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-xs flex items-center gap-2">
+              <Building2 className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white truncate text-[11px]">
+                <p className="font-medium text-zinc-200 truncate text-[11px] tracking-tight">
                   {org.name}
                 </p>
-                <p className="text-[10px] text-slate-400 font-mono truncate">
-                  org: {org.slug}
+                <p className="text-[10px] text-zinc-500 font-mono truncate">
+                  {org.slug}
                 </p>
               </div>
             </div>
           )}
 
-          {/* User Info & Navigation */}
-          <div className="flex items-center justify-between px-2 pt-1 text-xs">
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-slate-300 truncate">
-                {user?.email}
-              </p>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono uppercase">
-                {user?.role}
-              </span>
+          <div className="flex items-center justify-between px-1 text-xs">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-[10px] font-semibold text-zinc-300 shrink-0">
+                {user?.email ? user.email[0].toUpperCase() : "U"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-medium text-zinc-300 truncate">
+                  {user?.email}
+                </p>
+                <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-500 font-mono uppercase">
+                  {user?.role}
+                </span>
+              </div>
             </div>
 
             <button
               onClick={logout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              className="p-1 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-900 transition-colors cursor-pointer"
               title="Sign out"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Document Admin Navigation Button */}
           <Link
             href="/documents"
-            className="w-full mt-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-cyan-300 border border-cyan-500/20 hover:border-cyan-500/40 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="w-full mt-1 py-1.5 px-2.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 text-[11px] font-medium flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Document Admin Console</span>
+            <Layers className="w-3.5 h-3.5 text-zinc-500" />
+            <span>Document Admin</span>
           </Link>
         </div>
       </aside>
 
       {/* ========================================================================= */}
-      {/* MAIN CHAT VIEWPORT */}
+      {/* MAIN CHAT VIEWPORT                                                       */}
       {/* ========================================================================= */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#070b14] relative">
-        {/* Chat Header */}
-        <header className="px-6 py-4 border-b border-white/10 bg-[#0d1424]/90 backdrop-blur-md flex items-center justify-between z-20">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                {activeConvId
-                  ? conversations.find((c) => c.id === activeConvId)?.title ||
-                    "Active Session"
-                  : "Welcome to Intelligence OS"}
-              </h2>
-              <p className="text-[11px] text-slate-400">
-                Hybrid dense-sparse retrieval • Cross-encoder reranking • Verified citations
-              </p>
-            </div>
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#090a0f] relative">
+        {/* Top Navbar Header */}
+        <header className="px-6 py-3 border-b border-zinc-800/70 bg-[#090a0f]/80 backdrop-blur-md flex items-center justify-between z-20">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-zinc-500">Intelligence OS</span>
+            <span className="text-zinc-700">/</span>
+            <span className="text-zinc-200 font-medium truncate max-w-sm">
+              {activeConv?.title || "Search & Synthesis"}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Guardrails Active
-            </span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Grounded Guardrails</span>
+            </div>
           </div>
         </header>
 
         {/* Message Stream */}
-        <div className="flex-1 overflow-y-auto p-6 max-w-4xl w-full mx-auto space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 pt-6 pb-28 max-w-3xl w-full mx-auto space-y-4">
           {error && (
-            <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
               <span>{error}</span>
             </div>
@@ -428,24 +437,23 @@ export default function ChatWorkspacePage() {
 
           {/* Welcome Screen / Empty Conversation */}
           {messages.length === 0 && !loadingConv && (
-            <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6">
-              <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-cyan-500/20">
-                <Sparkles className="w-8 h-8" />
+            <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6 my-auto">
+              <div className="w-10 h-10 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-indigo-400 shadow-md">
+                <Sparkles className="w-5 h-5" />
               </div>
 
               <div className="max-w-md space-y-2">
-                <h3 className="text-xl font-extrabold text-white">
-                  Enterprise Contextual Intelligence
+                <h3 className="text-lg font-semibold text-zinc-100 tracking-tight">
+                  Ask anything across your organization
                 </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Ask factual questions grounded in your organization’s uploaded documents.
-                  Every statement is backed by verifiable source citations. If no evidence exists,
-                  the strict refusal guardrail prevents hallucinations.
+                <p className="text-xs text-zinc-400 leading-relaxed tracking-tight">
+                  Every response is grounded in factual vectors with verified page citations.
+                  Strict refusal guardrails eliminate hallucinations.
                 </p>
               </div>
 
               {/* Prompt Suggestions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 w-full max-w-2xl pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl pt-2">
                 {promptSuggestions.map((prompt, idx) => (
                   <button
                     key={idx}
@@ -453,11 +461,11 @@ export default function ChatWorkspacePage() {
                       setInputQuery(prompt);
                       textareaRef.current?.focus();
                     }}
-                    className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-white/5 hover:border-cyan-500/30 text-left text-xs text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm group"
+                    className="p-3 rounded-xl bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800/70 hover:border-zinc-700 text-left text-xs text-zinc-300 hover:text-zinc-100 transition-all duration-150 cursor-pointer shadow-xs group"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="line-clamp-2">{prompt}</span>
-                      <span className="text-slate-600 group-hover:text-cyan-400 text-xs ml-2">
+                      <span className="line-clamp-2 leading-relaxed">{prompt}</span>
+                      <span className="text-zinc-600 group-hover:text-zinc-300 text-xs ml-2">
                         →
                       </span>
                     </div>
@@ -480,18 +488,16 @@ export default function ChatWorkspacePage() {
 
           {/* Generating Indicator */}
           {sending && (
-            <div className="flex items-start gap-3 mb-6">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-md shadow-cyan-500/20 text-white">
-                <Cpu className="w-4 h-4" />
+            <div className="flex items-center gap-3 py-2 text-xs text-zinc-400 font-mono animate-in fade-in duration-200">
+              <div className="w-6 h-6 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-indigo-400">
+                <Cpu className="w-3.5 h-3.5 animate-pulse" />
               </div>
-              <div className="glass-card rounded-2xl rounded-tl-sm p-4 border border-white/10 flex items-center gap-3">
-                <div className="flex gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce" />
-                  <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:0.2s]" />
-                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce [animation-delay:0.4s]" />
-                </div>
-                <span className="text-xs text-slate-400 font-mono">
-                  Executing Hybrid Retrieval, Cross-Encoder Rerank & Grounded Synthesis...
+              <div className="flex items-center gap-2">
+                <span>Executing hybrid retrieval & synthesis</span>
+                <span className="flex gap-1">
+                  <span className="w-1 h-1 rounded-full bg-zinc-500 animate-pulse" />
+                  <span className="w-1 h-1 rounded-full bg-zinc-500 animate-pulse [animation-delay:0.2s]" />
+                  <span className="w-1 h-1 rounded-full bg-zinc-500 animate-pulse [animation-delay:0.4s]" />
                 </span>
               </div>
             </div>
@@ -500,50 +506,69 @@ export default function ChatWorkspacePage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Query Input Area */}
-        <div className="p-4 border-t border-white/10 bg-[#0a1120]/80 backdrop-blur-lg">
+        {/* ========================================================================= */}
+        {/* SLEEK FLOATING PROMPT BAR                                                */}
+        {/* ========================================================================= */}
+        <div className="absolute bottom-5 inset-x-0 px-4 max-w-3xl mx-auto z-30 pointer-events-none">
           <form
             onSubmit={handleSendMessage}
-            className="max-w-4xl mx-auto relative"
+            className="pointer-events-auto bg-zinc-900/80 backdrop-blur-md border border-zinc-800/90 rounded-2xl p-2 shadow-2xl transition-all focus-within:border-zinc-700/90 focus-within:ring-1 focus-within:ring-zinc-700/50"
           >
-            <textarea
-              id="chat-query-input"
-              ref={textareaRef}
-              rows={2}
-              value={inputQuery}
-              onChange={(e) => setInputQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage(e);
-                }
-              }}
-              placeholder="Ask a question about your organization's documents (e.g. 'What catalyzes cold fusion?')..."
-              className="w-full pl-4 pr-14 py-3 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500 transition-all resize-none shadow-inner"
-            />
+            <div className="flex items-end gap-2 px-2 pt-1">
+              {/* Auto-growing clean textarea without heavy outline */}
+              <textarea
+                id="chat-query-input"
+                ref={textareaRef}
+                rows={1}
+                value={inputQuery}
+                onChange={(e) => setInputQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Ask about corporate policies, specs, or contracts..."
+                className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none leading-relaxed max-h-44 py-1"
+              />
 
-            <button
-              id="btn-send-message"
-              type="submit"
-              disabled={!inputQuery.trim() || sending}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white disabled:opacity-40 disabled:hover:from-cyan-500 disabled:hover:to-indigo-600 transition-all shadow-md shadow-cyan-500/20 cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+              {/* Clean circular action button for Send */}
+              <button
+                id="btn-send-message"
+                type="submit"
+                disabled={!inputQuery.trim() || sending}
+                className="w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shrink-0 transition-all disabled:opacity-25 disabled:hover:bg-indigo-600 shadow-md cursor-pointer mb-0.5"
+                title="Send query"
+              >
+                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            </div>
+
+            {/* Discreet Bottom Bar with Hotkey Badge */}
+            <div className="flex items-center justify-between text-[11px] text-zinc-500 px-2 pt-1 pb-0.5 border-t border-zinc-800/40 mt-1">
+              <span className="flex items-center gap-1.5 font-mono text-[10px]">
+                <span className="px-1.5 py-0.2 rounded bg-zinc-800/70 border border-zinc-700/60 text-zinc-400">
+                  Enter
+                </span>
+                <span>to send</span>
+                <span className="text-zinc-600">•</span>
+                <span className="px-1.5 py-0.2 rounded bg-zinc-800/70 border border-zinc-700/60 text-zinc-400">
+                  Shift+Enter
+                </span>
+                <span>for newline</span>
+              </span>
+
+              <span className="flex items-center gap-1 text-zinc-400 text-[10px] font-medium">
+                <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                <span>Isolated Tenant</span>
+              </span>
+            </div>
           </form>
-
-          <div className="max-w-4xl mx-auto flex items-center justify-between text-[11px] text-slate-500 mt-2 px-1">
-            <span>Press Enter to send, Shift+Enter for new line</span>
-            <span className="flex items-center gap-1 text-slate-400 font-medium">
-              <Shield className="w-3 h-3 text-emerald-400" />
-              100% Tenant Isolated
-            </span>
-          </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* RIGHT CITATION DRAWER: Source Inspection */}
+      {/* CITATION DRAWER                                                          */}
       {/* ========================================================================= */}
       <CitationDrawer
         isOpen={drawerOpen}
