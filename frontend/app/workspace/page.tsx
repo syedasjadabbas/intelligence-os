@@ -15,16 +15,16 @@ import {
   Plus,
   MessageSquare,
   Trash2,
-  Send,
+  ArrowUp,
   Layers,
   LogOut,
   Cpu,
   Building2,
-  Shield,
+  ShieldCheck,
   Sparkles,
-  Bot,
   AlertCircle,
-  Home,
+  Search,
+  FileText,
 } from "lucide-react";
 
 export default function ChatWorkspacePage() {
@@ -58,12 +58,34 @@ export default function ChatWorkspacePage() {
     scrollToBottom();
   }, [messages, sending]);
 
+  // Global ⌘K / Ctrl+K shortcut to focus search input
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        textareaRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Auto-resize textarea height as query expands
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(
+        textareaRef.current.scrollHeight,
+        180
+      )}px`;
+    }
+  }, [inputQuery]);
+
   // Load user's conversations
   const loadConversations = useCallback(async () => {
     try {
       const list = await api.listConversations();
       setConversations(list);
-      // Auto-select latest conversation if none selected
       if (!activeConvId && list.length > 0) {
         setActiveConvId(list[0].id);
       }
@@ -114,7 +136,7 @@ export default function ChatWorkspacePage() {
 
     setError(null);
     try {
-      const newConv = await api.createConversation("New Conversation");
+      const newConv = await api.createConversation("New Thread");
       setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== newConv.id)]);
       setActiveConvId(newConv.id);
       setMessages([]);
@@ -125,7 +147,7 @@ export default function ChatWorkspacePage() {
       const localId = "local-" + Date.now();
       const localConv: ConversationItem = {
         id: localId,
-        title: "New Conversation",
+        title: "New Thread",
         org_id: org?.id || "default",
         user_id: user?.id || "default",
         created_at: new Date().toISOString(),
@@ -160,20 +182,23 @@ export default function ChatWorkspacePage() {
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const query = inputQuery.trim();
     if (!query || sending) return;
 
     setError(null);
     setSending(true);
     setInputQuery("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
 
     let currentConvId = activeConvId;
     if (!currentConvId || currentConvId.startsWith("local-")) {
       try {
         const titleSnippet =
-          query.slice(0, 30) + (query.length > 30 ? "..." : "");
+          query.slice(0, 32) + (query.length > 32 ? "..." : "");
         const created = await api.createConversation(titleSnippet);
         currentConvId = created.id;
         setActiveConvId(created.id);
@@ -221,7 +246,7 @@ export default function ChatWorkspacePage() {
             ? {
                 ...c,
                 title:
-                  c.title === "New Conversation"
+                  c.title === "New Thread" || c.title === "New Conversation"
                     ? query.slice(0, 35) + "..."
                     : c.title,
                 updated_at: new Date().toISOString(),
@@ -249,292 +274,338 @@ export default function ChatWorkspacePage() {
   const promptSuggestions = [
     "What core material catalyzes cold fusion in the Arc Reactor?",
     "What fluid cools it during emergency shutdown?",
-    "What is the radioactive half-life decay rate of Kryptonite in Gotham City?",
-    "Describe the autonomous drone avionics and swarm flight tactics.",
+    "What is the radioactive half-life decay rate of Kryptonite?",
+    "Summarize the autonomous drone avionics and swarm tactics.",
   ];
 
+  const activeConv = conversations.find((c) => c.id === activeConvId);
+
   return (
-    <div className="flex h-screen bg-[#090d16] overflow-hidden text-slate-100">
-      {/* LEFT SIDEBAR: Conversation History & Tenant Controls */}
-      <aside className="w-72 bg-[#0d131f] border-r border-slate-800 flex flex-col shrink-0">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-200">
-              <Cpu className="w-4 h-4 text-slate-300" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-sm tracking-tight text-slate-100">
-                Intelligence <span className="text-slate-400 font-normal">OS</span>
-              </h2>
-              <p className="text-[10px] text-slate-400 font-mono">Enterprise RAG</p>
-            </div>
-          </div>
-          <Link
-            href="/"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            title="Return to Landing Page"
-          >
-            <Home className="w-4 h-4" />
-          </Link>
-        </div>
-
-        <div className="p-3">
-          <button
-            id="btn-new-conversation"
-            type="button"
-            onClick={handleNewChat}
-            className="w-full py-2 px-3 rounded-lg bg-white/10 hover:bg-white/15 text-white border border-white/10 font-medium text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
-          >
-            <Plus className="w-4 h-4 text-slate-300" />
-            <span>New Conversation</span>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-2 space-y-1">
-          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-            Conversations
+    <div className="flex flex-col h-screen bg-[#090a0f] text-zinc-100 font-sans antialiased overflow-hidden selection:bg-indigo-500/25 selection:text-indigo-200">
+      {/* ========================================================================= */}
+      {/* HIGH-END ENTERPRISE TOP NAVBAR                                           */}
+      {/* ========================================================================= */}
+      <header className="h-14 w-full border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md px-5 flex items-center justify-between z-30 select-none shrink-0">
+        {/* Left Section: Organization & Workspace Identity */}
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Company/Tenant Badge */}
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 font-medium text-xs shadow-xs shrink-0">
+            <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span className="truncate max-w-[130px] font-medium">
+              {org?.name || "Lonetex"}
+            </span>
           </div>
 
-          {conversations.length === 0 ? (
-            <div className="p-4 text-center text-xs text-slate-400">
-              No conversations yet. Start one above!
-            </div>
-          ) : (
-            conversations.map((conv) => {
-              const isActive = conv.id === activeConvId;
-              return (
-                <div
-                  key={conv.id}
-                  onClick={() => setActiveConvId(conv.id)}
-                  className={`group relative flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-all ${
-                    isActive
-                      ? "bg-slate-800 text-slate-100 border border-slate-700 font-medium shadow-sm"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 border border-transparent"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <MessageSquare
-                      className={`w-3.5 h-3.5 shrink-0 ${
-                        isActive ? "text-slate-200" : "text-slate-400"
-                      }`}
-                    />
-                    <span className="truncate max-w-[170px]">
-                      {conv.title || "Untitled Session"}
-                    </span>
-                  </div>
+          {/* Breadcrumb Divider */}
+          <span className="text-zinc-600 text-xs shrink-0">/</span>
 
-                  <button
-                    onClick={(e) => handleDeleteConversation(e, conv.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-400 text-slate-500 transition-opacity cursor-pointer"
-                    title="Delete thread"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })
-          )}
+          {/* Active View / Thread Title */}
+          <span className="text-xs text-zinc-400 font-mono tracking-tight truncate max-w-[200px]">
+            {activeConv?.title || "Search & Synthesis"}
+          </span>
         </div>
 
-        <div className="p-3 border-t border-slate-800 bg-slate-900/40 space-y-2">
-          {org && (
-            <div className="px-2.5 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs flex items-center gap-2">
-              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-slate-200 truncate text-[11px]">
-                  {org.name}
-                </p>
-                <p className="text-[10px] text-slate-400 font-mono truncate">
-                  org: {org.slug}
-                </p>
-              </div>
-            </div>
-          )}
+        {/* Center Section: Enterprise Quick Command Bar */}
+        <div
+          onClick={() => textareaRef.current?.focus()}
+          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-zinc-400 text-xs hover:border-zinc-700 hover:text-zinc-300 transition-colors w-72 justify-between cursor-pointer shadow-xs group"
+          title="Search documents & index (⌘K / Ctrl+K)"
+        >
+          <div className="flex items-center gap-2 min-w-0 truncate">
+            <Search className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-400 shrink-0" />
+            <span className="truncate">Search documents & index...</span>
+          </div>
+          <kbd className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded border border-zinc-700 font-mono shrink-0">
+            ⌘K
+          </kbd>
+        </div>
 
-          <div className="flex items-center justify-between px-1.5 pt-0.5 text-xs">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-semibold text-slate-300 shrink-0">
-                {user?.email ? user.email[0].toUpperCase() : "U"}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-medium text-slate-300 truncate">
-                  {user?.email}
-                </p>
-                <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 border border-slate-700/60 text-slate-400 font-mono uppercase">
-                  {user?.role}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={logout}
-              className="p-1 rounded-md text-slate-400 hover:text-rose-300 hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Sign out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
+        {/* Right Section: Enterprise Status & Utilities */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {/* Engine Status Pill */}
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full shadow-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Hybrid RAG Online</span>
           </div>
 
+          {/* Tenant Security Pill */}
+          <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-mono text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full shadow-xs">
+            <ShieldCheck className="w-3 h-3 text-emerald-500" />
+            <span>Isolated Tenant</span>
+          </div>
+
+          {/* Quick Navigation Links: Documents Admin */}
           <Link
             href="/documents"
-            className="w-full mt-1 py-1.5 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-medium flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 transition-all cursor-pointer shadow-xs"
+            title="Open Document Administration"
           >
-            <Layers className="w-3.5 h-3.5 text-slate-400" />
-            <span>Document Admin Console</span>
+            <FileText className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Documents Admin</span>
           </Link>
+
+          {/* User Profile Initial & ADMIN role badge */}
+          <div className="flex items-center gap-1.5 pl-1.5 border-l border-zinc-800/80">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border border-indigo-400/30 flex items-center justify-center text-[11px] font-bold text-white shadow-xs">
+              {user?.email ? user.email[0].toUpperCase() : "A"}
+            </div>
+            <span className="text-[10px] font-mono uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
+              {user?.role?.toUpperCase() || "ADMIN"}
+            </span>
+          </div>
         </div>
-      </aside>
+      </header>
 
-      {/* MAIN CHAT VIEWPORT */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#090d16] relative">
-        <header className="px-6 py-3.5 border-b border-slate-800 bg-slate-900/60 backdrop-blur-md flex items-center justify-between z-20">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-300">
-              <Bot className="w-4 h-4 text-slate-300" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                {activeConvId
-                  ? conversations.find((c) => c.id === activeConvId)?.title ||
-                    "Active Session"
-                  : "Welcome to Intelligence OS"}
-              </h2>
-              <p className="text-[11px] text-slate-400">
-                Hybrid dense-sparse retrieval • Cross-encoder reranking • Verified citations
-              </p>
-            </div>
+      {/* ========================================================================= */}
+      {/* LOWER WORKSPACE AREA: Fixed to h-[calc(100vh-3.5rem)]                    */}
+      {/* ========================================================================= */}
+      <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
+        {/* ======================================================================= */}
+        {/* SIDEBAR: Conversation History & Actions                                */}
+        {/* ======================================================================= */}
+        <aside className="w-64 lg:w-72 bg-[#0c0d14] border-r border-zinc-800/70 flex flex-col shrink-0 h-full">
+          {/* New Thread Button */}
+          <div className="p-3 border-b border-zinc-800/70">
+            <button
+              id="btn-new-conversation"
+              type="button"
+              onClick={handleNewChat}
+              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800/80 text-zinc-200 hover:text-white border border-zinc-800 hover:border-zinc-700 font-medium text-xs flex items-center justify-between transition-all duration-150 cursor-pointer shadow-xs group"
+            >
+              <div className="flex items-center gap-2">
+                <Plus className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200" />
+                <span>New Thread</span>
+              </div>
+              <span className="text-[10px] font-mono text-zinc-500 group-hover:text-zinc-400 border border-zinc-800 px-1.5 py-0.2 rounded bg-zinc-950/60">
+                ⌘N
+              </span>
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span className="font-medium text-slate-300 text-[11px]">Guardrails Active</span>
+          {/* Conversation List */}
+          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+            <div className="px-2.5 py-1 text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+              Recent Threads
             </div>
-          </div>
-        </header>
 
-        <div className="flex-1 overflow-y-auto p-6 max-w-4xl w-full mx-auto space-y-4">
-          {error && (
-            <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {messages.length === 0 && !loadingConv && (
-            <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200 shadow-sm">
-                <Sparkles className="w-6 h-6 text-slate-300" />
+            {conversations.length === 0 ? (
+              <div className="p-4 text-center text-xs text-zinc-500">
+                No conversations yet.
               </div>
-
-              <div className="max-w-md space-y-2">
-                <h3 className="text-lg font-bold text-white">
-                  Enterprise Contextual Intelligence
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Ask factual questions grounded in your organization’s uploaded documents.
-                  Every statement is backed by verifiable source citations. If no evidence exists,
-                  the strict refusal guardrail prevents hallucinations.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 w-full max-w-2xl pt-2">
-                {promptSuggestions.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setInputQuery(prompt);
-                      textareaRef.current?.focus();
-                    }}
-                    className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left text-xs text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm group"
+            ) : (
+              conversations.map((conv) => {
+                const isActive = conv.id === activeConvId;
+                return (
+                  <div
+                    key={conv.id}
+                    onClick={() => setActiveConvId(conv.id)}
+                    className={`group relative flex items-center justify-between py-2 px-2.5 rounded-lg text-xs cursor-pointer transition-all duration-150 ${
+                      isActive
+                        ? "bg-zinc-900 text-zinc-100 border-l-2 border-indigo-500 shadow-xs font-medium"
+                        : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-l-2 border-transparent"
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="line-clamp-2">{prompt}</span>
-                      <span className="text-slate-500 group-hover:text-slate-300 text-xs ml-2">
-                        →
+                    <div className="flex items-center gap-2 min-w-0">
+                      <MessageSquare
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isActive ? "text-indigo-400" : "text-zinc-500"
+                        }`}
+                      />
+                      <span className="truncate max-w-[160px] tracking-tight">
+                        {conv.title || "Untitled Session"}
                       </span>
                     </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {messages.map((msg) => (
-            <ChatMessage
-              key={msg.id}
-              message={msg}
-              onSelectCitation={(citation) =>
-                handleCitationClick(citation, msg.citations || [])
-              }
-            />
-          ))}
+                    <button
+                      onClick={(e) => handleDeleteConversation(e, conv.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-400 text-zinc-500 transition-opacity cursor-pointer"
+                      title="Delete thread"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
 
-          {sending && (
-            <div className="flex items-start gap-3 mb-6">
-              <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300 mt-1">
-                <Cpu className="w-4 h-4 text-slate-300" />
-              </div>
-              <div className="rounded-xl px-4 py-3 border border-slate-800 bg-slate-900/60 flex items-center gap-3 shadow-sm">
-                <div className="flex gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse [animation-delay:0.2s]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse [animation-delay:0.4s]" />
+          {/* Refined User & Tenant Pill at Bottom Left */}
+          <div className="p-3 border-t border-zinc-800/70 bg-[#0c0d14] space-y-2">
+            <div className="flex items-center justify-between px-1 text-xs">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-[10px] font-semibold text-zinc-300 shrink-0">
+                  {user?.email ? user.email[0].toUpperCase() : "U"}
                 </div>
-                <span className="text-xs text-slate-400 font-mono">
-                  Executing Hybrid Retrieval, Cross-Encoder Rerank & Grounded Synthesis...
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium text-zinc-300 truncate">
+                    {user?.email}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 font-mono truncate">
+                    org: {org?.slug || "lonetex"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={logout}
+                className="p-1 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-900 transition-colors cursor-pointer"
+                title="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        {/* ======================================================================= */}
+        {/* MAIN CHAT VIEWPORT                                                     */}
+        {/* ======================================================================= */}
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#090a0f] relative">
+          {/* Message Stream */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 pb-32 max-w-3xl w-full mx-auto space-y-8">
+            {error && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Welcome Screen / Empty Conversation */}
+            {messages.length === 0 && !loadingConv && (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6 my-auto">
+                <div className="w-10 h-10 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-indigo-400 shadow-md">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+
+                <div className="max-w-md space-y-2">
+                  <h3 className="text-lg font-semibold text-zinc-100 tracking-tight">
+                    Ask anything across your organization
+                  </h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed tracking-tight">
+                    Every response is grounded in factual vectors with verified page citations.
+                    Strict refusal guardrails eliminate hallucinations.
+                  </p>
+                </div>
+
+                {/* Prompt Suggestions */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl pt-2">
+                  {promptSuggestions.map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setInputQuery(prompt);
+                        textareaRef.current?.focus();
+                      }}
+                      className="p-3 rounded-xl bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800/70 hover:border-zinc-700 text-left text-xs text-zinc-300 hover:text-zinc-100 transition-all duration-150 cursor-pointer shadow-xs group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="line-clamp-2 leading-relaxed">{prompt}</span>
+                        <span className="text-zinc-600 group-hover:text-zinc-300 text-xs ml-2">
+                          →
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Render Messages */}
+            {messages.map((msg) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                onSelectCitation={(citation) =>
+                  handleCitationClick(citation, msg.citations || [])
+                }
+              />
+            ))}
+
+            {/* Generating Indicator */}
+            {sending && (
+              <div className="flex items-center gap-3 py-2 text-xs text-zinc-400 font-mono animate-in fade-in duration-200">
+                <div className="w-6 h-6 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-indigo-400">
+                  <Cpu className="w-3.5 h-3.5 animate-pulse" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>Executing hybrid retrieval & synthesis</span>
+                  <span className="flex gap-1">
+                    <span className="w-1 h-1 rounded-full bg-zinc-500 animate-pulse" />
+                    <span className="w-1 h-1 rounded-full bg-zinc-500 animate-pulse [animation-delay:0.2s]" />
+                    <span className="w-1 h-1 rounded-full bg-zinc-500 animate-pulse [animation-delay:0.4s]" />
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* ===================================================================== */}
+          {/* SLEEK FLOATING PROMPT BAR                                            */}
+          {/* ===================================================================== */}
+          <div className="absolute bottom-5 inset-x-0 px-4 max-w-3xl mx-auto z-30 pointer-events-none">
+            <form
+              onSubmit={handleSendMessage}
+              className="pointer-events-auto bg-zinc-900/80 backdrop-blur-md border border-zinc-800/90 rounded-2xl p-2 shadow-2xl transition-all focus-within:border-zinc-700/90 focus-within:ring-1 focus-within:ring-zinc-700/50"
+            >
+              <div className="flex items-end gap-2 px-2 pt-1">
+                {/* Auto-growing clean textarea without heavy outline */}
+                <textarea
+                  id="chat-query-input"
+                  ref={textareaRef}
+                  rows={1}
+                  value={inputQuery}
+                  onChange={(e) => setInputQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Ask about corporate policies, specs, or contracts..."
+                  className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none leading-relaxed max-h-44 py-1"
+                />
+
+                {/* Clean circular action button for Send */}
+                <button
+                  id="btn-send-message"
+                  type="submit"
+                  disabled={!inputQuery.trim() || sending}
+                  className="w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shrink-0 transition-all disabled:opacity-25 disabled:hover:bg-indigo-600 shadow-md cursor-pointer mb-0.5"
+                  title="Send query"
+                >
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              </div>
+
+              {/* Discreet Bottom Bar with Hotkey Badge */}
+              <div className="flex items-center justify-between text-[11px] text-zinc-500 px-2 pt-1 pb-0.5 border-t border-zinc-800/40 mt-1">
+                <span className="flex items-center gap-1.5 font-mono text-[10px]">
+                  <span className="px-1.5 py-0.2 rounded bg-zinc-800/70 border border-zinc-700/60 text-zinc-400">
+                    Enter
+                  </span>
+                  <span>to send</span>
+                  <span className="text-zinc-600">•</span>
+                  <span className="px-1.5 py-0.2 rounded bg-zinc-800/70 border border-zinc-700/60 text-zinc-400">
+                    Shift+Enter
+                  </span>
+                  <span>for newline</span>
+                </span>
+
+                <span className="flex items-center gap-1 text-zinc-400 text-[10px] font-medium">
+                  <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                  <span>Isolated Tenant</span>
                 </span>
               </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="p-4 border-t border-slate-800 bg-[#090d16]/90 backdrop-blur-lg">
-          <form
-            onSubmit={handleSendMessage}
-            className="max-w-4xl mx-auto relative bg-slate-900 border border-slate-800 focus-within:border-slate-600 rounded-xl transition-all shadow-sm"
-          >
-            <textarea
-              id="chat-query-input"
-              ref={textareaRef}
-              rows={2}
-              value={inputQuery}
-              onChange={(e) => setInputQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage(e);
-                }
-              }}
-              placeholder="Ask a question about your organization's documents (e.g. 'What catalyzes cold fusion?')..."
-              className="w-full pl-4 pr-14 py-3 bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all resize-none"
-            />
-
-            <button
-              id="btn-send-message"
-              type="submit"
-              disabled={!inputQuery.trim() || sending}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-slate-100 hover:bg-white text-slate-900 disabled:opacity-30 disabled:hover:bg-slate-100 transition-all shadow-sm cursor-pointer"
-              title="Send message"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          </form>
-
-          <div className="max-w-4xl mx-auto flex items-center justify-between text-[11px] text-slate-500 mt-2 px-1">
-            <span>
-              <kbd className="font-mono bg-slate-800 border border-slate-700/60 text-slate-400 px-1 py-0.5 rounded text-[10px]">Enter ↵</kbd> to send, <kbd className="font-mono bg-slate-800 border border-slate-700/60 text-slate-400 px-1 py-0.5 rounded text-[10px]">Shift+Enter</kbd> for newline
-            </span>
-            <span className="flex items-center gap-1.5 text-slate-400 font-medium">
-              <Shield className="w-3 h-3 text-slate-400" />
-              100% Tenant Isolated
-            </span>
+            </form>
           </div>
         </div>
       </div>
 
+      {/* ========================================================================= */}
+      {/* CITATION DRAWER                                                          */}
+      {/* ========================================================================= */}
       <CitationDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}

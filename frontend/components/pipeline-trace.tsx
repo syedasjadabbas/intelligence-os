@@ -9,14 +9,14 @@ import {
   Layers,
   GitBranch,
   BarChart2,
-  ShieldCheck,
 } from "lucide-react";
 
 interface PipelineTraceProps {
   trace: TraceData;
+  className?: string;
 }
 
-export function PipelineTrace({ trace }: PipelineTraceProps) {
+export function PipelineTrace({ trace, className }: PipelineTraceProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   if (!trace) return null;
@@ -39,41 +39,42 @@ export function PipelineTrace({ trace }: PipelineTraceProps) {
     (trace.reranked_scores ? trace.reranked_scores.length : 0);
 
   return (
-    <div className="mt-3 text-xs font-sans">
+    <div className={`text-xs font-sans ${className || "mt-2"}`}>
       {/* Refusal compact badge if guardrail triggered */}
       {trace.is_refusal && (
-        <div className="mb-2 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-mono">
+        <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-          <span>Refusal Guardrail Triggered • Zero Hallucination</span>
+          <span>Refusal Guardrail Active • Zero Hallucination</span>
         </div>
       )}
 
-      {/* Sleek Minimal Collapsed Pill Header */}
+      {/* Minimalist Telemetry Pill */}
       <div>
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900/80 hover:bg-zinc-850 text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 text-xs font-mono transition-all duration-150 cursor-pointer shadow-xs group"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-500 hover:text-zinc-300 border border-zinc-800/80 hover:border-zinc-700 text-[11px] font-mono transition-all duration-150 cursor-pointer shadow-xs group"
+          title="Toggle Pipeline Trace Telemetry"
         >
-          <span className="text-amber-400">⚡</span>
+          <span className="text-amber-400/90">⚡</span>
           <span>
             {latencies.total ? `${latencies.total.toFixed(0)}ms` : "<150ms"}
           </span>
-          <span className="text-zinc-600">•</span>
+          <span className="text-zinc-700">•</span>
           <span>
             Hybrid Search ({candidateCount} {candidateCount === 1 ? "chunk" : "chunks"})
           </span>
           {isQueryRewritten && (
             <>
-              <span className="text-zinc-600">•</span>
+              <span className="text-zinc-700">•</span>
               <span className="text-indigo-400">Rewritten</span>
             </>
           )}
-          <span className="text-zinc-500 group-hover:text-zinc-300 ml-0.5">
+          <span className="text-zinc-600 group-hover:text-zinc-400 ml-0.5">
             {isOpen ? (
-              <ChevronUp className="w-3.5 h-3.5" />
+              <ChevronUp className="w-3 h-3" />
             ) : (
-              <ChevronDown className="w-3.5 h-3.5" />
+              <ChevronDown className="w-3 h-3" />
             )}
           </span>
         </button>
@@ -81,7 +82,7 @@ export function PipelineTrace({ trace }: PipelineTraceProps) {
 
       {/* Smooth Accordion Expansion */}
       {isOpen && (
-        <div className="mt-2.5 rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md p-4 space-y-3.5 shadow-xl transition-all animate-in fade-in-50 duration-200">
+        <div className="mt-2.5 rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md p-4 space-y-3.5 shadow-xl transition-all animate-in fade-in-50 duration-200 text-left w-full">
           {/* Query Rewriting */}
           {trace.rewritten_query && (
             <div>
