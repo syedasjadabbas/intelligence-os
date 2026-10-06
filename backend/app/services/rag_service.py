@@ -9,6 +9,11 @@ import google.generativeai as genai
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.rag.guardrails import (
+    evaluate_grounded_refusal_guardrail,
+    filter_sufficient_candidates,
+    is_context_sufficient,
+)
 from app.services.retrieval_service import SearchResultItem
 
 logger = logging.getLogger(__name__)
@@ -246,10 +251,20 @@ class RAGService:
                         if k and v:
                             pair_candidates.append((k, v, idx, "delim"))
 
-                # b. Same-line table pairs: regex match Key Value
-                # e.g., 'Total Active Workforce 35 Team Members' or 'Chief Executive Officer (CEO) Shahid Mahid'
+                # b. Same-line table pairs: regex match Key Value & Management Roles
+                # e.g., 'Production & Floor Supervisor Shahzad' or 'Chief Executive Officer (CEO) Shahid Mahid'
+                m_role = re.match(
+                    r"^(.*(?:Supervisor|Manager|Officer|Chairman|CEO|President|Director|Lead|Head|Workforce|Scale|Hours|Cycle))\s+(.*)$",
+                    line,
+                    re.IGNORECASE,
+                )
+                if m_role:
+                    k, v = m_role.group(1).strip(), m_role.group(2).strip()
+                    if k and v:
+                        pair_candidates.append((k, v, idx, "role_table"))
+
                 m_same = re.match(
-                    r"^([A-Za-z\s\(\)/&]+?)\s{1,4}(\d+.*|PKR\b.*|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)$",
+                    r"^([A-Za-z\s\(\)/&]+?)\s{1,4}(\d+.*|PKR\b.*|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)$",
                     line,
                 )
                 if m_same:
@@ -296,7 +311,7 @@ class RAGService:
                         score += 3.0
 
             # Concrete numeric / personnel bonuses
-            is_name = bool(re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$", v))
+            is_name = bool(re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$", v))
             if (
                 re.search(r"\d+", v)
                 or re.search(r"\b(personnel|members|team|categories|cube|hours|scale|pkr)\b", v_lower)
@@ -483,8 +498,10 @@ class RAGService:
             else len(candidates)
         )
 
-        # Handle empty retrieval
-        if not candidates:
+        # Check context sufficiency against calibrated threshold (0.45)
+        # Reduced from 0.75 -> 0.45 to prevent false refusal on valid queries with moderate similarity
+        threshold = getattr(settings, "GUARDRAIL_SCORE_THRESHOLD", 0.45)
+        if not candidates or not is_context_sufficient(candidates, threshold=threshold):
             gen_latency_ms = (time.perf_counter() - t_gen_start) * 1000
             total_latency_ms = (
                 retrieval_latency_ms + rerank_latency_ms + gen_latency_ms
@@ -493,8 +510,17 @@ class RAGService:
             trace_data = {
                 "original_query": original_query,
                 "rewritten_query": rewritten_query,
-                "retrieval_candidate_count": 0,
-                "reranked_scores": [],
+                "retrieval_candidate_count": candidate_count,
+                "reranked_scores": [
+                    {
+                        "chunk_id": str(c.chunk_id),
+                        "document_id": str(c.document_id),
+                        "document_title": c.document_title,
+                        "score": c.score,
+                        "rerank_score": c.rerank_score,
+                    }
+                    for c in candidates
+                ],
                 "selected_sources": [],
                 "latency_ms": {
                     "retrieval": round(retrieval_latency_ms, 2),
@@ -511,8 +537,16 @@ class RAGService:
                 "trace_data": trace_data,
             }
 
+        # Filter candidates ensuring moderate candidates (>= 0.45) are preserved and top 3-5 candidates passed
+        filtered_candidates = filter_sufficient_candidates(
+            candidates,
+            threshold=threshold,
+            min_candidates=3,
+            max_candidates=5,
+        )
+
         # 1. Format Context Block
-        context_str, source_map = self.format_context_block(candidates)
+        context_str, source_map = self.format_context_block(filtered_candidates)
 
         answer: str = ""
         is_refusal: bool = False
@@ -572,17 +606,11 @@ class RAGService:
                 source_map=source_map,
             )
 
-        # Check refusal guardrail
-        if (
-            not answer
-            or settings.INSUFFICIENT_EVIDENCE_PHRASE.lower() in answer.lower()
-            or "cannot find sufficient evidence" in answer.lower()
-            or "insufficient evidence" in answer.lower()
-            or "does not contain" in answer.lower()
-            or "no mention" in answer.lower()
-        ):
-            answer = settings.INSUFFICIENT_EVIDENCE_PHRASE
-            is_refusal = True
+        # Evaluate refusal guardrail using calibrated refusal criteria
+        answer, is_refusal = evaluate_grounded_refusal_guardrail(
+            answer,
+            is_sufficient=True,
+        )
 
         # 3. Citation Extraction & Validation
         citations: List[Dict[str, Any]] = []

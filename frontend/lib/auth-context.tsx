@@ -51,27 +51,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setTokenState(existingToken);
       const userData = await api.getMe();
-      if (userData && typeof userData === "object") {
-        setUser(userData);
-        if (userData.organization) {
-          setOrg(userData.organization);
+      // Ensure the token has not changed while getMe was resolving
+      if (api.getToken() === existingToken) {
+        if (userData && typeof userData === "object") {
+          setUser(userData);
+          if (userData.organization) {
+            setOrg(userData.organization);
+          }
+        } else {
+          throw new Error("Invalid user response format");
         }
-      } else {
-        throw new Error("Invalid user response format");
       }
     } catch (err: any) {
       console.warn("Auth token validation failed or backend offline:", err.message || err);
-      // Only clear credentials if definitely an authentication rejection
-      const isAuthRejection =
-        err?.message &&
-        (err.message.includes("401") ||
-         err.message.includes("Could not validate credentials") ||
-         err.message.includes("Not authenticated"));
-      if (isAuthRejection) {
-        api.clearToken();
-        setUser(null);
-        setOrg(null);
-        setTokenState(null);
+      // Only clear credentials if definitely an authentication rejection and token was not superseded
+      if (api.getToken() === existingToken) {
+        const isAuthRejection =
+          err?.message &&
+          (err.message.includes("401") ||
+           err.message.includes("Could not validate credentials") ||
+           err.message.includes("Not authenticated"));
+        if (isAuthRejection) {
+          api.clearToken();
+          setUser(null);
+          setOrg(null);
+          setTokenState(null);
+        }
       }
     } finally {
       setLoading(false);
@@ -111,12 +116,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, loading, pathname, router]);
 
   const login = async (payload: LoginPayload) => {
-    setLoading(true);
     try {
       const res = await api.login(payload);
       setUser(res.user);
       setOrg(res.organization);
       setTokenState(res.access_token);
+      setLoading(false);
       router.push("/");
     } finally {
       setLoading(false);
@@ -124,12 +129,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (payload: RegisterOrgPayload) => {
-    setLoading(true);
     try {
       const res = await api.registerOrg(payload);
       setUser(res.user);
       setOrg(res.organization);
       setTokenState(res.access_token);
+      setLoading(false);
       router.push("/");
     } finally {
       setLoading(false);

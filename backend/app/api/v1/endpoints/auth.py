@@ -100,6 +100,11 @@ async def register_organization(
 
 
 @router.post(
+    "/token",
+    response_model=Token,
+    summary="Login / Token exchange via JSON or OAuth2 Form Data",
+)
+@router.post(
     "/login",
     response_model=Token,
     summary="Login via JSON or OAuth2 Form Data",

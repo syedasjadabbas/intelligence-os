@@ -10,6 +10,16 @@ from app.services.retrieval_service import SearchResultItem
 logger = logging.getLogger(__name__)
 
 
+STOPWORDS = {
+    "what", "when", "where", "which", "who", "whom", "whose", "why", "how",
+    "the", "and", "or", "but", "for", "with", "this", "that", "these", "those",
+    "is", "are", "was", "were", "been", "being", "have", "has", "had", "does",
+    "did", "doing", "would", "should", "could", "from", "into", "during",
+    "before", "after", "above", "below", "to", "of", "in", "on", "at", "by",
+    "an", "a", "it", "its", "they", "them", "their", "tell", "me", "about",
+}
+
+
 def compute_deterministic_cross_score(
     query: str,
     content: str,
@@ -18,8 +28,8 @@ def compute_deterministic_cross_score(
 ) -> float:
     """
     Deterministic cross-attention similarity scoring matrix for offline/local reranking.
-    Jointly evaluates query tokens, exact phrase matches, section headings,
-    and term proximities against chunk content.
+    Jointly evaluates salient query tokens (accounting for stop words), exact phrase matches,
+    document title/entity propagation, and section headings against chunk content.
     """
     query_clean = query.lower().strip()
     content_clean = content.lower().strip()
@@ -29,49 +39,89 @@ def compute_deterministic_cross_score(
     if not query_clean or not content_clean:
         return 0.0
 
-    # 1. Exact query match bonus
+    # 1. Exact query / phrase match bonus
     exact_phrase_bonus = 0.0
     if query_clean in content_clean:
         exact_phrase_bonus = 0.45
     elif len(query_clean.split()) > 2:
-        # Check subphrases of 2+ words
         q_words = query_clean.split()
         for i in range(len(q_words) - 1):
             subphrase = f"{q_words[i]} {q_words[i+1]}"
             if subphrase in content_clean:
                 exact_phrase_bonus = max(exact_phrase_bonus, 0.25)
 
-    # 2. Token coverage & term frequency
-    query_tokens = [w for w in re.findall(r"\w+", query_clean) if len(w) > 1]
-    if not query_tokens:
+    # 2. Extract salient content tokens (filtering common interrogatives and stop words)
+    all_tokens = [w for w in re.findall(r"\w+", query_clean) if len(w) > 1]
+    content_tokens = [w for w in all_tokens if w not in STOPWORDS] or all_tokens
+    if not content_tokens:
         return 0.0
 
-    matched_tokens = 0
+    matched_content_tokens = 0.0
+    content_hits = 0
     tf_sum = 0
-    for token in query_tokens:
-        count = len(re.findall(r"\b" + re.escape(token) + r"\b", content_clean))
-        if count > 0:
-            matched_tokens += 1
-            tf_sum += min(count, 5)  # Cap term saturation
 
-    token_coverage = matched_tokens / len(query_tokens)
-    tf_score = min(0.3, tf_sum * 0.05)
+    for token in content_tokens:
+        stem = token[:-1] if token.endswith("s") and len(token) > 3 else token
+        in_content = token in content_clean or stem in content_clean
+        in_title = token in title_clean or stem in title_clean
+        in_heading = token in heading_clean or stem in heading_clean
+
+        if in_content:
+            matched_content_tokens += 1.0
+            content_hits += 1
+            # Term saturation in chunk body
+            count = len(re.findall(r"\b" + re.escape(token) + r"\b", content_clean))
+            tf_sum += min(max(count, 1), 5)
+        elif in_title or in_heading:
+            # Token satisfied by document title or section heading context
+            matched_content_tokens += 0.85
+
+    token_coverage = matched_content_tokens / len(content_tokens)
+    tf_score = min(0.25, tf_sum * 0.05)
 
     # 3. Contextual relevance bonus (Heading and Document Title)
     meta_bonus = 0.0
-    for token in query_tokens:
+    for token in content_tokens:
         if token in heading_clean:
             meta_bonus += 0.1
         if token in title_clean:
-            meta_bonus += 0.05
-    meta_bonus = min(0.2, meta_bonus)
+            meta_bonus += 0.08
+    meta_bonus = min(0.25, meta_bonus)
+
+    # Specific chunk content term bonus (e.g. role title or specific metric matched in chunk)
+    role_bonus = 0.0
+    for token in content_tokens:
+        if (token in content_clean) and (token not in title_clean):
+            role_bonus += 0.20
+    role_bonus = min(0.30, role_bonus)
 
     # 4. Joint score aggregation
-    raw_score = (0.4 * token_coverage) + exact_phrase_bonus + tf_score + meta_bonus
+    raw_score = (
+        (0.45 * token_coverage)
+        + exact_phrase_bonus
+        + tf_score
+        + meta_bonus
+        + role_bonus
+    )
 
     # Sigmoid scaling into [0.0, 1.0] range
-    calibrated_score = 1.0 / (1.0 + math.exp(-3.0 * (raw_score - 0.5)))
+    calibrated_score = 1.0 / (1.0 + math.exp(-3.2 * (raw_score - 0.42)))
     return round(float(calibrated_score), 4)
+
+
+def deduplicate_candidates(candidates: List[SearchResultItem]) -> List[SearchResultItem]:
+    """
+    Deduplicates candidates with identical or near-identical content so multiple
+    document uploads or chunk overlaps do not crowd out distinct informative chunks.
+    """
+    seen_signatures = set()
+    deduped = []
+    for c in candidates:
+        sig = re.sub(r"\s+", " ", c.content.strip().lower())[:160]
+        if sig not in seen_signatures:
+            seen_signatures.add(sig)
+            deduped.append(c)
+    return deduped
 
 
 class RerankerService:
@@ -141,7 +191,8 @@ class RerankerService:
                         candidate = candidates[idx]
                         candidate.rerank_score = round(relevance, 4)
                         reranked.append(candidate)
-                    return reranked
+                    deduped = deduplicate_candidates(reranked)
+                    return deduped[:top_k]
                 else:
                     logger.warning(
                         f"Cohere Rerank API error {res.status_code}: {res.text}"
@@ -169,7 +220,8 @@ class RerankerService:
                 key=lambda x: x.rerank_score if x.rerank_score is not None else 0.0,
                 reverse=True,
             )
-            return sorted_candidates[:top_k]
+            deduped = deduplicate_candidates(sorted_candidates)
+            return deduped[:top_k]
         except Exception as exc:
             logger.warning(f"Local CrossEncoder inference failed: {exc}")
 
@@ -194,7 +246,8 @@ class RerankerService:
             key=lambda x: x.rerank_score if x.rerank_score is not None else 0.0,
             reverse=True,
         )
-        return sorted_candidates[:top_k]
+        deduped = deduplicate_candidates(sorted_candidates)
+        return deduped[:top_k]
 
     async def rerank(
         self,
@@ -204,13 +257,15 @@ class RerankerService:
     ) -> List[SearchResultItem]:
         """
         Reranks a list of candidate chunks against the query.
-        Returns top `RERANK_TOP_K` candidates sorted descending by rerank score.
+        Ensures moderate candidates are preserved and returns top 3-5 candidates
+        without aggressive margin pruning.
         """
         if not candidates:
             return []
 
         limit = top_k if top_k is not None else settings.RERANK_TOP_K
-        limit = min(limit, len(candidates))
+        # Ensure at least 3 candidates are retained if available, up to limit
+        limit = max(min(3, len(candidates)), min(limit, len(candidates)))
 
         # 1. Try Cohere API
         cohere_results = await self._rerank_cohere(query, candidates, limit)

@@ -80,8 +80,10 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4o-mini"
     GEMINI_MODEL: str = "gemini-2.5-flash"
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    RERANK_TOP_K: int = 4
+    RERANK_TOP_K: int = 5
     MAX_CONTEXT_TOKENS: int = 2000
+    GUARDRAIL_SCORE_THRESHOLD: float = 0.45  # Reduced from 0.75 -> 0.45 to prevent false refusal on moderate relevance chunks
+    SIMILARITY_SCORE_THRESHOLD: float = 0.45
     INSUFFICIENT_EVIDENCE_PHRASE: str = (
         "I cannot find sufficient evidence in the organization's documents to answer this question."
     )

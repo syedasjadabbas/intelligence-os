@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import {
   Building2,
@@ -12,9 +13,11 @@ import {
   ShieldCheck,
   AlertCircle,
   Hash,
+  X,
 } from "lucide-react";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const { register } = useAuth();
   const [orgName, setOrgName] = useState("");
   const [orgSlug, setOrgSlug] = useState("");
@@ -46,9 +49,10 @@ export default function RegisterPage() {
         admin_email: adminEmail,
         admin_password: adminPassword,
       });
+      router.push("/");
     } catch (err: any) {
       setError(
-        err.message || "Failed to register organization. Please try again."
+        err?.message || "Failed to register organization. Please try again."
       );
     } finally {
       setLoading(false);

@@ -142,6 +142,10 @@ export interface ChatMessageResponse {
   trace_data: TraceData;
 }
 
+export interface RequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
 class ApiClient {
   private tokenKey = "intelligence_os_jwt";
 
@@ -162,7 +166,7 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestOptions = {}
   ): Promise<T> {
     const token = this.getToken();
     const headers: Record<string, string> = {
@@ -178,16 +182,52 @@ class ApiClient {
     }
 
     const url = `${API_BASE_URL}${endpoint}`;
+    const timeoutMs = options.timeoutMs ?? 10000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener("abort", () => controller.abort());
+      }
+    }
+
     let response: Response;
     try {
       response = await fetch(url, {
         ...options,
         headers,
+        signal: controller.signal,
       });
     } catch (networkError: any) {
+      const isAbort =
+        controller.signal.aborted ||
+        networkError?.name === "AbortError" ||
+        networkError?.name === "TimeoutError";
+      const errMsg = networkError?.message || String(networkError);
+      const isNetworkHangOrRefusal =
+        isAbort ||
+        errMsg.includes("Failed to fetch") ||
+        errMsg.includes("ECONNREFUSED") ||
+        errMsg.includes("fetch failed") ||
+        errMsg.includes("NetworkError") ||
+        errMsg.includes("Network request failed");
+
+      if (isNetworkHangOrRefusal) {
+        throw new Error(
+          "Unable to reach the server. Please verify the backend is running."
+        );
+      }
+
       throw new Error(
-        `Backend server unreachable at ${url}: ${networkError.message || networkError}`
+        "Unable to reach the server. Please verify the backend is running."
       );
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (response.status === 401) {
@@ -241,6 +281,7 @@ class ApiClient {
     const res = await this.request<AuthResponse>("/auth/register-org", {
       method: "POST",
       body: JSON.stringify(payload),
+      timeoutMs: 10000,
     });
     if (res.access_token) {
       this.setToken(res.access_token);
@@ -252,6 +293,7 @@ class ApiClient {
     const res = await this.request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(payload),
+      timeoutMs: 10000,
     });
     if (res.access_token) {
       this.setToken(res.access_token);
@@ -260,7 +302,9 @@ class ApiClient {
   }
 
   async getMe(): Promise<User> {
-    return this.request<User>("/auth/me");
+    return this.request<User>("/auth/me", {
+      timeoutMs: 10000,
+    });
   }
 
   // --- Document APIs ---
@@ -271,6 +315,7 @@ class ApiClient {
     return this.request<DocumentItem>("/documents/upload", {
       method: "POST",
       body: formData,
+      timeoutMs: 60000,
     });
   }
 
@@ -319,6 +364,7 @@ class ApiClient {
       {
         method: "POST",
         body: JSON.stringify({ question }),
+        timeoutMs: 60000,
       }
     );
   }
