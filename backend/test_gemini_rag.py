@@ -1,12 +1,13 @@
+import asyncio
+from pathlib import Path
 import os
 import sys
 from dotenv import load_dotenv
 
-load_dotenv(".env")
+env_path = Path(__file__).parent / ".env"
+load_dotenv(env_path if env_path.exists() else ".env")
 import google.generativeai as genai
-
-api_key = os.environ.get("GEMINI_API_KEY")
-genai.configure(api_key=api_key)
+from app.services.rag_service import rag_service
 
 system_instruction = (
     "You are Intelligence OS. Answer the user's specific question directly and concisely in 1-2 natural sentences using ONLY the provided contexts.\n"
@@ -15,8 +16,6 @@ system_instruction = (
     "- If the context lacks sufficient facts, reply ONLY:\n"
     "  'I cannot find sufficient evidence in the organization's documents to answer this question.'"
 )
-
-model = genai.GenerativeModel("gemini-3.8-flash", system_instruction=system_instruction)
 
 context = (
     "[Source 1] (Document: lonetex_annual_report.pdf, Page: 4, Section: Workforce Overview)\n"
@@ -28,5 +27,12 @@ prompt = (
     "Concise Answer:"
 )
 
-res = model.generate_content(prompt)
-print("Response text:", repr(res.text.strip()))
+async def main():
+    res_text = await rag_service._generate_gemini_content(
+        system_instruction=system_instruction,
+        prompt=prompt,
+    )
+    print("Response text:", repr(res_text.strip()))
+
+if __name__ == "__main__":
+    asyncio.run(main())

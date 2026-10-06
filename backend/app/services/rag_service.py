@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
+import unicodedata
 import uuid
 import google.generativeai as genai
 from openai import AsyncOpenAI
@@ -16,10 +17,14 @@ CITATION_REGEX = re.compile(r"\[Sources?:?\s*([^\]]+)\]", re.IGNORECASE)
 
 SYSTEM_INSTRUCTION = (
     "You are Intelligence OS. Answer the user's specific question directly and concisely in 1-2 natural sentences using the facts in the provided contexts.\n"
-    "- Look inside structured text, tables, and role designations (e.g. 'Role | Name', 'Chief Executive Officer (CEO) | Shahid Mahid').\n"
-    "- Handle common abbreviations naturally (e.g. 'CEO' refers to 'Chief Executive Officer').\n"
-    "- Cite sources inline using [Source X].\n"
-    "- If and ONLY if the context truly contains zero relevant information, reply strictly:\n"
+    "- Match organizational roles, designations, and job titles flexibly. For example:\n"
+    "  * 'supervisor' matches 'Production & Floor Supervisor'\n"
+    "  * 'manager' matches 'Operations / Branch Manager'\n"
+    "  * 'cashier' or 'finance' matches 'Head Cashier / Finance Officer'\n"
+    "  * 'CEO' matches 'Chief Executive Officer'\n"
+    "- Extract the exact person's name or metric associated with the matched role/entity.\n"
+    "- Always cite sources inline using [Source X].\n"
+    "- If and ONLY if the provided context contains truly zero relevant information or mentions of the topic, reply strictly:\n"
     "  'I cannot find sufficient evidence in the organization's documents to answer this question.'"
 )
 
@@ -39,6 +44,19 @@ class RAGService:
     insufficient-evidence refusal guardrails, and structured telemetry pipeline tracing.
     """
 
+    @staticmethod
+    def sanitize_model_name(model_name: Optional[str]) -> str:
+        """
+        Sanitizes model name by trimming whitespace, stripping any 'models/' prefix,
+        and ensuring clean identifier format.
+        """
+        if not model_name:
+            return "gemini-2.5-flash"
+        cleaned = model_name.strip().strip("'\"")
+        if cleaned.lower().startswith("models/"):
+            cleaned = cleaned[7:]
+        return cleaned or "gemini-2.5-flash"
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -49,7 +67,7 @@ class RAGService:
         self.api_key = api_key
         self.model = model or settings.LLM_MODEL
         self.gemini_api_key = gemini_api_key or settings.GEMINI_API_KEY
-        self.gemini_model = gemini_model or settings.GEMINI_MODEL
+        self.gemini_model = self.sanitize_model_name(gemini_model or settings.GEMINI_MODEL)
         self._client: Optional[AsyncOpenAI] = None
         self._cached_key: Optional[str] = None
 
@@ -161,16 +179,19 @@ class RAGService:
 
         return mapped_citations, unmapped_indices
 
-    def _generate_grounded_mock_answer(
+    def _generate_fallback_answer(
         self,
         query: str,
         source_map: Dict[int, SearchResultItem],
     ) -> Tuple[str, bool]:
         """
-        Deterministic factual answer generator for offline environments and testing.
-        Searches candidate chunks for the exact single sentence directly answering the query.
-        Never returns full raw chunk content or dumps paragraphs.
-        If no direct factual evidence exists, immediately returns the strict refusal phrase.
+        Deterministic factual answer generator with structured pair extraction.
+        Parses candidate chunks line-by-line:
+          a. Delimiter pairs: split on ':' or '|' into (key, val).
+          b. Same-line table pairs: regex match Key Value.
+          c. Multi-line card pairs: line i is concise label (<= 6 words), line i+1 is value (<= 10 words).
+        Scores pairs against query tokens (stems, consecutive bigrams, numeric/personnel bonuses).
+        Falls back to sentence-level factual matcher or refusal phrase if ungrounded.
         """
         query_lower = query.lower()
         stopwords = {
@@ -179,7 +200,7 @@ class RAGService:
             "is", "are", "was", "were", "been", "being", "have", "has", "had", "does",
             "did", "doing", "would", "should", "could", "from", "into", "during",
             "before", "after", "above", "below", "to", "of", "in", "on", "at", "by",
-            "an", "a", "it", "its", "they", "them", "their", "tell", "me", "about"
+            "an", "a", "it", "its", "they", "them", "their", "tell", "me", "about",
         }
         query_words = [
             w for w in re.findall(r"\w+", query_lower)
@@ -189,33 +210,149 @@ class RAGService:
         if not query_words:
             return settings.INSUFFICIENT_EVIDENCE_PHRASE, True
 
-        candidate_matches: List[Tuple[float, int, str]] = []  # (score, source_index, sentence)
+        # Extract entity if specified in query (e.g., 'of Lonetex' or 'Lonetex\'s')
+        entity: Optional[str] = None
+        m_entity = re.search(r"\bof\s+([A-Za-z0-9_\s]+?)(?:\?|$|\.|\,)", query, re.IGNORECASE)
+        if m_entity:
+            ent = m_entity.group(1).strip()
+            if ent.lower() not in {"this", "that", "the", "it", "them", "these", "those"}:
+                entity = ent.title()
+        if not entity:
+            m_entity = re.search(r"\b([A-Za-z0-9_-]+)\'s\b", query, re.IGNORECASE)
+            if m_entity:
+                entity = m_entity.group(1).strip().title()
+
+        entity_words = set(re.findall(r"\w+", entity.lower())) if entity else set()
+        attr_words = [w for w in query_words if w not in entity_words]
+
+        # 1. Structured Pair Extraction
+        pair_candidates: List[Tuple[str, str, int, str]] = []
 
         for idx, item in source_map.items():
-            # Strip markdown headings and clean chunk content
+            lines = [
+                unicodedata.normalize("NFKD", line.strip())
+                for line in item.content.splitlines()
+                if line.strip()
+            ]
+
+            for i in range(len(lines)):
+                line = lines[i]
+
+                # a. Delimiter pairs: split on ':' or '|' into (key, val)
+                for delim in [":", "|"]:
+                    if delim in line:
+                        parts = line.split(delim, 1)
+                        k, v = parts[0].strip(), parts[1].strip()
+                        if k and v:
+                            pair_candidates.append((k, v, idx, "delim"))
+
+                # b. Same-line table pairs: regex match Key Value
+                # e.g., 'Total Active Workforce 35 Team Members' or 'Chief Executive Officer (CEO) Shahid Mahid'
+                m_same = re.match(
+                    r"^([A-Za-z\s\(\)/&]+?)\s{1,4}(\d+.*|PKR\b.*|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)$",
+                    line,
+                )
+                if m_same:
+                    k, v = m_same.group(1).strip(), m_same.group(2).strip()
+                    if k and v and len(k.split()) >= 2:
+                        pair_candidates.append((k, v, idx, "same_line"))
+
+                # c. Multi-line card pairs: when line i is concise label/header (<= 6 words)
+                # and line i+1 contains the value (<= 10 words, numbers, or designations)
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    if len(line.split()) <= 6 and not line.startswith("#") and not line.startswith("---"):
+                        if len(next_line.split()) <= 10 and not next_line.startswith("#"):
+                            pair_candidates.append((line, next_line, idx, "multiline"))
+
+        # Score extracted pairs against query tokens (matching stems, consecutive bigrams, concrete numeric/personnel bonuses)
+        scored_pairs: List[Tuple[float, str, str, int, str]] = []
+        for k, v, idx, ctype in pair_candidates:
+            k_lower = k.lower()
+            v_lower = v.lower()
+            combined = f"{k_lower} {v_lower}"
+
+            matches = 0
+            attr_matches = 0
+            for w in query_words:
+                stem = w[:-1] if w.endswith("s") and len(w) > 3 else w
+                if w in k_lower or stem in k_lower:
+                    matches += 1
+                    if w in attr_words or stem in attr_words:
+                        attr_matches += 1
+
+            if attr_words and attr_matches == 0:
+                continue
+            if matches == 0:
+                continue
+
+            score = matches * 3.0
+
+            # Consecutive bigrams match
+            if len(query_words) >= 2:
+                for j in range(len(query_words) - 1):
+                    pair = f"{query_words[j]} {query_words[j+1]}"
+                    if pair in k_lower or pair in combined:
+                        score += 3.0
+
+            # Concrete numeric / personnel bonuses
+            is_name = bool(re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$", v))
+            if (
+                re.search(r"\d+", v)
+                or re.search(r"\b(personnel|members|team|categories|cube|hours|scale|pkr)\b", v_lower)
+                or is_name
+            ):
+                score += 4.0
+
+            scored_pairs.append((score, k, v, idx, ctype))
+
+        scored_pairs.sort(key=lambda x: x[0], reverse=True)
+
+        if scored_pairs:
+            best_pair = scored_pairs[0]
+            k, v, source_idx = best_pair[1], best_pair[2], best_pair[3]
+            clean_key = re.sub(r"^[#*\-\s]+", "", k).strip().lower()
+            clean_val = re.sub(r"^[#*\-\s]+", "", v).strip().rstrip(".,; ")
+            val_parts = clean_val.split()
+            if (
+                len(val_parts) >= 2
+                and val_parts[0].isdigit()
+                and val_parts[1].lower() in {"personnel", "team members", "members", "categories", "employees", "staff"}
+            ):
+                clean_val_formatted = f"{val_parts[0]} {val_parts[1].lower()}" + (
+                    " " + " ".join(val_parts[2:]) if len(val_parts) > 2 else ""
+                )
+            else:
+                clean_val_formatted = clean_val
+
+            if entity and entity.lower() not in clean_key:
+                sentence = f"The {clean_key} of {entity} is {clean_val_formatted} [Source {source_idx}]."
+            else:
+                sentence = f"The {clean_key} is {clean_val_formatted} [Source {source_idx}]."
+            return sentence, False
+
+        # 2. Sentence-level factual matcher fallback
+        candidate_matches: List[Tuple[float, int, str]] = []
+
+        for idx, item in source_map.items():
             clean_content = re.sub(r"^#+[^\n]*\n*", "", item.content, flags=re.MULTILINE).strip()
-            # Split strictly by sentence terminators or single newlines
             raw_sentences = re.split(r"(?<=[.!?])\s+|\n+", clean_content)
 
             for sentence in raw_sentences:
                 sent_clean = sentence.strip()
-                # Skip empty or overly long raw paragraph dumps
                 if not sent_clean or len(sent_clean) < 10 or len(sent_clean) > 350:
                     continue
-                # Skip header-like lines
                 if sent_clean.startswith("#") or sent_clean.startswith("---"):
                     continue
 
                 sent_lower = sent_clean.lower()
 
-                # Calculate specific keyword / entity overlap
                 matched_query_words = 0
                 for w in query_words:
                     stem = w[:-1] if w.endswith("s") and len(w) > 3 else w
                     if w in sent_lower or stem in sent_lower:
                         matched_query_words += 1
 
-                # Check subphrase bonus
                 subphrase_bonus = 0
                 if len(query_words) >= 2:
                     for i in range(len(query_words) - 1):
@@ -225,7 +362,6 @@ class RAGService:
 
                 score = matched_query_words * 2.0 + subphrase_bonus
 
-                # Require meaningful factual match: at least 2 distinct words or all words if query is short
                 min_required = min(2, len(query_words))
                 if matched_query_words >= min_required and score >= 2.0:
                     candidate_matches.append((score, idx, sent_clean))
@@ -233,14 +369,19 @@ class RAGService:
         if not candidate_matches:
             return settings.INSUFFICIENT_EVIDENCE_PHRASE, True
 
-        # Sort descending by match score
         candidate_matches.sort(key=lambda x: x[0], reverse=True)
         best_score, best_idx, best_sentence = candidate_matches[0]
-
-        # Extract only the exact single sentence and format cleanly with [Source X]
         cleaned_sent = best_sentence.rstrip(".!? ")
         concise_answer = f"{cleaned_sent} [Source {best_idx}]."
         return concise_answer, False
+
+    def _generate_grounded_mock_answer(
+        self,
+        query: str,
+        source_map: Dict[int, SearchResultItem],
+    ) -> Tuple[str, bool]:
+        """Compatibility wrapper forwarding to _generate_fallback_answer."""
+        return self._generate_fallback_answer(query, source_map)
 
     async def _generate_gemini_content(
         self,
@@ -250,7 +391,7 @@ class RAGService:
         """
         Generates answer using genai.GenerativeModel(settings.GEMINI_MODEL) with enforced system instructions.
         Executes via asyncio.to_thread for fast non-blocking execution across environments.
-        Supports automatic fallback if a deprecated model name is requested.
+        Supports automatic fallback if a model is deprecated (404) or quota is exhausted (429).
         """
         gemini_key = self.gemini_api_key or settings.GEMINI_API_KEY
         if gemini_key and gemini_key.strip():
@@ -259,11 +400,21 @@ class RAGService:
             except Exception as exc:
                 logger.warning(f"Failed to re-configure Gemini: {exc}")
 
-        primary_model = self.gemini_model or settings.GEMINI_MODEL or "gemini-3.8-flash"
+        primary_model = self.sanitize_model_name(self.gemini_model or settings.GEMINI_MODEL)
         models_to_try = [primary_model]
-        for fallback in ["gemini-3.8-flash", "gemini-flash-latest"]:
-            if fallback not in models_to_try:
-                models_to_try.append(fallback)
+        candidate_fallbacks = [
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-flash-lite-latest",
+            "gemini-3.8-flash",
+            "gemini-flash-latest",
+        ]
+        for fallback in candidate_fallbacks:
+            clean_fb = self.sanitize_model_name(fallback)
+            if clean_fb not in models_to_try:
+                models_to_try.append(clean_fb)
 
         last_exc = None
         for m_name in models_to_try:
@@ -282,20 +433,30 @@ class RAGService:
                 last_exc = exc
                 err_str = str(exc).lower()
                 if (
-                    "not found" in err_str
+                    "404" in err_str
+                    or "not found" in err_str
                     or "no longer available" in err_str
+                    or "deprecated" in err_str
+                    or "429" in err_str
                     or "quota exceeded" in err_str
                     or "resource_exhausted" in err_str
-                    or "429" in err_str
+                    or "resourceexhausted" in err_str
+                    or "rate limit" in err_str
+                    or "unavailable" in err_str
+                    or "503" in err_str
                 ):
                     logger.info(
                         f"Gemini model '{m_name}' unavailable ({exc}), attempting next fallback model..."
                     )
                     continue
                 else:
-                    raise exc
+                    logger.warning(
+                        f"Gemini model '{m_name}' encountered error ({exc}), attempting next fallback model..."
+                    )
+                    continue
 
         if last_exc:
+            logger.warning(f"All Gemini models exhausted or failed: {last_exc}")
             raise last_exc
         return ""
 
@@ -406,7 +567,7 @@ class RAGService:
 
         # Fallback to deterministic grounded generator if no answer produced
         if not answer:
-            answer, is_refusal = self._generate_grounded_mock_answer(
+            answer, is_refusal = self._generate_fallback_answer(
                 query=rewritten_query,
                 source_map=source_map,
             )

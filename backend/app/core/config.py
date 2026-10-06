@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # RAG Generation, Reranking & Guardrails
     LLM_PROVIDER: str = "gemini"
     LLM_MODEL: str = "gpt-4o-mini"
-    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     RERANK_TOP_K: int = 4
     MAX_CONTEXT_TOKENS: int = 2000
