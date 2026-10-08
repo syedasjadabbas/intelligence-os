@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, chat, documents, health, org, search
+from app.api.v1.endpoints import auth, chat, documents, evaluations, health, org, search
 
 api_router = APIRouter()
 
@@ -26,3 +26,9 @@ api_router.include_router(
 api_router.include_router(
     chat.router, prefix="/chat", tags=["Conversations & Chat"]
 )
+
+# RAG Evaluation Framework (Phase 3 API)
+api_router.include_router(
+    evaluations.router, prefix="/evaluations", tags=["RAG Evaluation"]
+)
+

@@ -26,6 +26,7 @@ import {
   AlertCircle,
   Search,
   PanelLeft,
+  BarChart3,
 } from "lucide-react";
 
 export default function ChatWorkspacePage() {
@@ -362,6 +363,15 @@ export default function ChatWorkspacePage() {
             className="text-xs font-medium text-zinc-300 hover:text-white px-3 py-1.5 rounded-md hover:bg-zinc-900 transition-colors"
           >
             Documents
+          </Link>
+
+          {/* Evaluations Link */}
+          <Link
+            href="/evaluations"
+            className="text-xs font-medium text-zinc-300 hover:text-white px-3 py-1.5 rounded-md hover:bg-zinc-900 transition-colors flex items-center gap-1.5"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Evaluations</span>
           </Link>
 
           {/* Vertical Divider */}

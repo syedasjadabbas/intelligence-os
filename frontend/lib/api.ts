@@ -368,6 +368,242 @@ class ApiClient {
       }
     );
   }
+
+  // --- Evaluation APIs (Phase 3) ---
+  async listEvaluations(params?: {
+    skip?: number;
+    limit?: number;
+    judge_type?: string;
+    status?: string;
+  }): Promise<EvaluationRunsPage> {
+    const searchParams = new URLSearchParams();
+    if (params?.skip !== undefined) searchParams.set("skip", String(params.skip));
+    if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
+    if (params?.judge_type) searchParams.set("judge_type", params.judge_type);
+    if (params?.status) searchParams.set("status", params.status);
+
+    const query = searchParams.toString();
+    const endpoint = `/evaluations${query ? `?${query}` : ""}`;
+    return this.request<EvaluationRunsPage>(endpoint, { timeoutMs: 15000 });
+  }
+
+  async getEvaluation(runId: string): Promise<EvaluationRunDetail> {
+    return this.request<EvaluationRunDetail>(`/evaluations/${runId}`, {
+      timeoutMs: 15000,
+    });
+  }
+
+  async listEvaluationResults(
+    runId: string,
+    params?: {
+      skip?: number;
+      limit?: number;
+      passed?: boolean;
+      query_type?: string;
+      is_refusal?: boolean;
+    }
+  ): Promise<EvaluationResultsPage> {
+    const searchParams = new URLSearchParams();
+    if (params?.skip !== undefined) searchParams.set("skip", String(params.skip));
+    if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
+    if (params?.passed !== undefined) searchParams.set("passed", String(params.passed));
+    if (params?.query_type) searchParams.set("query_type", params.query_type);
+    if (params?.is_refusal !== undefined) searchParams.set("is_refusal", String(params.is_refusal));
+
+    const query = searchParams.toString();
+    const endpoint = `/evaluations/${runId}/results${query ? `?${query}` : ""}`;
+    return this.request<EvaluationResultsPage>(endpoint, { timeoutMs: 15000 });
+  }
+
+  async getEvaluationResult(
+    runId: string,
+    resultId: string
+  ): Promise<EvaluationResultDetail> {
+    return this.request<EvaluationResultDetail>(
+      `/evaluations/${runId}/results/${resultId}`,
+      { timeoutMs: 15000 }
+    );
+  }
+
+  async createEvaluation(payload: EvaluationRunCreate): Promise<EvaluationRunDetail> {
+    return this.request<EvaluationRunDetail>("/evaluations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 120000, // 2-min bounded evaluation limit
+    });
+  }
+
+  async compareEvaluations(
+    baseRunId: string,
+    targetRunId: string
+  ): Promise<EvaluationComparisonResponse> {
+    const params = new URLSearchParams({
+      base_run_id: baseRunId,
+      target_run_id: targetRunId,
+    });
+    return this.request<EvaluationComparisonResponse>(
+      `/evaluations/compare?${params.toString()}`,
+      { timeoutMs: 20000 }
+    );
+  }
+}
+
+// Evaluation Types (Phase 3)
+export interface EvaluationRunListItem {
+  id: string;
+  org_id: string;
+  dataset_name: string;
+  dataset_version: string;
+  status: string;
+  judge_type: string;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  total_test_cases: number;
+  passed_test_cases: number;
+  pass_rate: number;
+  recall_at_3?: number | null;
+  recall_at_5?: number | null;
+  mrr?: number | null;
+  ndcg_at_5?: number | null;
+  citation_precision?: number | null;
+  citation_coverage?: number | null;
+  mean_faithfulness?: number | null;
+  mean_correctness?: number | null;
+  mean_completeness?: number | null;
+  mean_citation_correctness?: number | null;
+  mean_latency_ms?: number | null;
+  latency_p95_ms?: number | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+}
+
+export interface EvaluationRunDetail extends EvaluationRunListItem {
+  embedding_model?: string | null;
+  reranker_model?: string | null;
+  correct_refusal_rate?: number | null;
+  false_refusal_rate?: number | null;
+  config_snapshot: Record<string, any>;
+  summary_metrics: Record<string, any>;
+  regression_summary: Record<string, any>;
+}
+
+export interface EvaluationRunsPage {
+  items: EvaluationRunListItem[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface EvaluationRunCreate {
+  dataset_name?: string;
+  judge_type?: "deterministic" | "llm" | string;
+  limit?: number;
+  offline?: boolean;
+}
+
+export interface EvaluationResultListItem {
+  id: string;
+  run_id: string;
+  test_case_id: string;
+  query: string;
+  query_type: string;
+  expected_behavior: string;
+  generated_answer: string;
+  passed: boolean;
+  is_refusal: boolean;
+  recall_at_3?: number | null;
+  recall_at_5?: number | null;
+  mrr?: number | null;
+  ndcg_at_5?: number | null;
+  citation_precision?: number | null;
+  citation_coverage?: number | null;
+  faithfulness?: number | null;
+  correctness?: number | null;
+  completeness?: number | null;
+  citation_correctness?: number | null;
+  total_latency_ms?: number | null;
+  failure_reason?: string | null;
+  created_at: string;
+}
+
+export interface EvaluationResultDetail extends EvaluationResultListItem {
+  org_id: string;
+  retrieved_candidates: Array<{
+    chunk_id: string;
+    document_id: string;
+    document_title: string;
+    page_number?: number | null;
+    section_heading?: string | null;
+    content: string;
+    score: number;
+    rerank_score?: number | null;
+  }>;
+  reranked_candidates: Array<{
+    chunk_id: string;
+    document_id: string;
+    document_title: string;
+    page_number?: number | null;
+    section_heading?: string | null;
+    content: string;
+    score: number;
+    rerank_score?: number | null;
+  }>;
+  citations: Array<{
+    document_title: string;
+    page_number?: number | null;
+    section_heading?: string | null;
+    content: string;
+  }>;
+  trace_data: Record<string, any>;
+  judge_output: {
+    faithfulness?: number;
+    correctness?: number;
+    completeness?: number;
+    citation_correctness?: number;
+    supported?: boolean;
+    reasoning?: string;
+    unsupported_claims?: string[];
+  };
+}
+
+export interface EvaluationResultsPage {
+  items: EvaluationResultListItem[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface MetricDelta {
+  base_value?: number | null;
+  target_value?: number | null;
+  delta?: number | null;
+  percent_change?: number | null;
+  status: "improved" | "regressed" | "neutral";
+}
+
+export interface EvaluationComparisonDeltas {
+  pass_rate: MetricDelta;
+  recall_at_3: MetricDelta;
+  recall_at_5: MetricDelta;
+  mrr: MetricDelta;
+  ndcg_at_5: MetricDelta;
+  citation_precision: MetricDelta;
+  citation_coverage: MetricDelta;
+  mean_faithfulness: MetricDelta;
+  mean_correctness: MetricDelta;
+  mean_completeness: MetricDelta;
+  mean_citation_correctness: MetricDelta;
+  mean_latency_ms: MetricDelta;
+}
+
+export interface EvaluationComparisonResponse {
+  base_run: EvaluationRunListItem;
+  target_run: EvaluationRunListItem;
+  deltas: EvaluationComparisonDeltas;
+  regressed_cases_count: number;
+  improved_cases_count: number;
 }
 
 export const api = new ApiClient();
+

@@ -22,6 +22,7 @@ import {
   Shield,
   Layers,
   FileCheck,
+  BarChart3,
 } from "lucide-react";
 
 export default function DocumentsPage() {
@@ -198,6 +199,13 @@ export default function DocumentsPage() {
               <span className="font-semibold text-white">{org.name}</span>
             </div>
           )}
+          <Link
+            href="/evaluations"
+            className="p-1.5 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Evaluations</span>
+          </Link>
           <button
             onClick={() => fetchDocuments()}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer border border-slate-700/60"

@@ -119,6 +119,7 @@ class EvalRunSummary(BaseModel):
     status: str
     total_test_cases: int
     passed_test_cases: int
+    pass_rate: Optional[float] = None
     recall_at_3: Optional[float] = None
     recall_at_5: Optional[float] = None
     mrr: Optional[float] = None
@@ -133,11 +134,99 @@ class EvalRunSummary(BaseModel):
     mean_citation_correctness: Optional[float] = None
     mean_latency_ms: Optional[float] = None
     latency_p95_ms: Optional[float] = None
+    judge_type: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class EvaluationRunListItem(BaseModel):
+    """Compact summary schema for evaluation history lists and tables."""
+    id: uuid.UUID
+    org_id: uuid.UUID
+    dataset_name: str
+    dataset_version: str
+    status: str
+    judge_type: str = "deterministic"
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    total_test_cases: int
+    passed_test_cases: int
+    pass_rate: float = 0.0
+    recall_at_3: Optional[float] = None
+    recall_at_5: Optional[float] = None
+    mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
+    citation_precision: Optional[float] = None
+    citation_coverage: Optional[float] = None
+    mean_faithfulness: Optional[float] = None
+    mean_correctness: Optional[float] = None
+    mean_completeness: Optional[float] = None
+    mean_citation_correctness: Optional[float] = None
+    mean_latency_ms: Optional[float] = None
+    latency_p95_ms: Optional[float] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EvaluationRunDetail(BaseModel):
+    """Detailed evaluation run payload including configuration snapshot and summary metrics."""
+    id: uuid.UUID
+    org_id: uuid.UUID
+    dataset_name: str
+    dataset_version: str
+    status: str
+    judge_type: str = "deterministic"
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    embedding_model: Optional[str] = None
+    reranker_model: Optional[str] = None
+    total_test_cases: int
+    passed_test_cases: int
+    pass_rate: float = 0.0
+    recall_at_3: Optional[float] = None
+    recall_at_5: Optional[float] = None
+    mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
+    citation_precision: Optional[float] = None
+    citation_coverage: Optional[float] = None
+    correct_refusal_rate: Optional[float] = None
+    false_refusal_rate: Optional[float] = None
+    mean_faithfulness: Optional[float] = None
+    mean_correctness: Optional[float] = None
+    mean_completeness: Optional[float] = None
+    mean_citation_correctness: Optional[float] = None
+    mean_latency_ms: Optional[float] = None
+    latency_p95_ms: Optional[float] = None
+    config_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    summary_metrics: Dict[str, Any] = Field(default_factory=dict)
+    regression_summary: Dict[str, Any] = Field(default_factory=dict)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EvaluationRunsPage(BaseModel):
+    """Paginated evaluation run list response."""
+    items: List[EvaluationRunListItem]
+    total: int
+    skip: int
+    limit: int
+
+
+class EvaluationRunCreate(BaseModel):
+    """Request payload to start an evaluation run."""
+    dataset_name: str = Field(default="golden_dataset", description="Name of benchmark dataset to evaluate.")
+    judge_type: str = Field(default="deterministic", description="'deterministic' or 'llm'")
+    limit: Optional[int] = Field(default=50, ge=1, le=50, description="Maximum test cases to evaluate (hard server cap: 50).")
+    offline: bool = Field(default=True, description="Whether to run in deterministic offline mode.")
 
 
 class EvalRunResultItem(BaseModel):
@@ -160,8 +249,115 @@ class EvalRunResultItem(BaseModel):
     faithfulness: Optional[float] = None
     correctness: Optional[float] = None
     completeness: Optional[float] = None
+    citation_correctness: Optional[float] = None
     total_latency_ms: Optional[float] = None
     failure_reason: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class EvaluationResultListItem(BaseModel):
+    """Compact test case result item for paginated tables without heavy candidate arrays."""
+    id: uuid.UUID
+    run_id: uuid.UUID
+    test_case_id: str
+    query: str
+    query_type: str
+    expected_behavior: str
+    generated_answer: str
+    passed: bool
+    is_refusal: bool
+    recall_at_3: Optional[float] = None
+    recall_at_5: Optional[float] = None
+    mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
+    citation_precision: Optional[float] = None
+    citation_coverage: Optional[float] = None
+    faithfulness: Optional[float] = None
+    correctness: Optional[float] = None
+    completeness: Optional[float] = None
+    citation_correctness: Optional[float] = None
+    total_latency_ms: Optional[float] = None
+    failure_reason: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EvaluationResultDetail(BaseModel):
+    """Complete test case detail inspection schema with retrieved chunks, reranked chunks, citations, and judge reasoning."""
+    id: uuid.UUID
+    run_id: uuid.UUID
+    org_id: uuid.UUID
+    test_case_id: str
+    query: str
+    query_type: str
+    expected_behavior: str
+    generated_answer: str
+    passed: bool
+    is_refusal: bool
+    recall_at_3: Optional[float] = None
+    recall_at_5: Optional[float] = None
+    mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
+    citation_precision: Optional[float] = None
+    citation_coverage: Optional[float] = None
+    faithfulness: Optional[float] = None
+    correctness: Optional[float] = None
+    completeness: Optional[float] = None
+    citation_correctness: Optional[float] = None
+    total_latency_ms: Optional[float] = None
+    retrieved_candidates: List[Dict[str, Any]] = Field(default_factory=list)
+    reranked_candidates: List[Dict[str, Any]] = Field(default_factory=list)
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    trace_data: Dict[str, Any] = Field(default_factory=dict)
+    judge_output: Dict[str, Any] = Field(default_factory=dict)
+    failure_reason: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EvaluationResultsPage(BaseModel):
+    """Paginated evaluation results list response."""
+    items: List[EvaluationResultListItem]
+    total: int
+    skip: int
+    limit: int
+
+
+# --- Run Comparison Schemas ---
+
+class MetricDelta(BaseModel):
+    """Delta comparison for a single metric between base and target runs."""
+    base_value: Optional[float] = None
+    target_value: Optional[float] = None
+    delta: Optional[float] = None
+    percent_change: Optional[float] = None
+    status: str = "neutral"  # improved, regressed, neutral
+
+
+class EvaluationComparisonDeltas(BaseModel):
+    """Metrics deltas comparison between two evaluation runs."""
+    pass_rate: MetricDelta
+    recall_at_3: MetricDelta
+    recall_at_5: MetricDelta
+    mrr: MetricDelta
+    ndcg_at_5: MetricDelta
+    citation_precision: MetricDelta
+    citation_coverage: MetricDelta
+    mean_faithfulness: MetricDelta
+    mean_correctness: MetricDelta
+    mean_completeness: MetricDelta
+    mean_citation_correctness: MetricDelta
+    mean_latency_ms: MetricDelta
+
+
+class EvaluationComparisonResponse(BaseModel):
+    """Full comparison response between two evaluation runs."""
+    base_run: EvaluationRunListItem
+    target_run: EvaluationRunListItem
+    deltas: EvaluationComparisonDeltas
+    regressed_cases_count: int = 0
+    improved_cases_count: int = 0
