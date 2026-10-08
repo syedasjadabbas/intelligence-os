@@ -102,6 +102,10 @@ class EvalRun(Base):
         Float,
         nullable=True,
     )
+    ndcg_at_5: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
     citation_precision: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
@@ -115,6 +119,26 @@ class EvalRun(Base):
         nullable=True,
     )
     false_refusal_rate: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    mean_faithfulness: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    mean_correctness: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    mean_completeness: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    mean_citation_correctness: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    mean_latency_ms: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
     )
@@ -241,11 +265,31 @@ class EvalRunResult(Base):
         Float,
         nullable=True,
     )
+    ndcg_at_5: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
     citation_precision: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
     )
     citation_coverage: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    faithfulness: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    correctness: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    completeness: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    citation_correctness: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
     )

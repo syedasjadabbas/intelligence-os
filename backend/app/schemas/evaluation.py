@@ -24,7 +24,7 @@ class BenchmarkTestCase(BaseModel):
     id: str
     query: str
     conversation_history: List[Dict[str, str]] = Field(default_factory=list)
-    query_type: str = "single_hop"  # single_hop, multi_hop, coreference_followup, unanswerable
+    query_type: str = "single_hop"  # single_hop, multi_hop, coreference_followup, retrieval_hard, multi_document, semantic_search, citation_sensitive, reranking_test, unanswerable
     expected_behavior: str = "answer"  # answer, refuse
     ground_truth_answer: Optional[str] = None
     key_facts: List[str] = Field(default_factory=list)
@@ -36,7 +36,7 @@ class BenchmarkDataset(BaseModel):
     """Complete version-controlled benchmark dataset specification."""
     dataset_name: str
     description: Optional[str] = None
-    version: str = "1.0.0"
+    version: str = "2.0.0"
     target_documents: List[str] = Field(default_factory=list)
     test_cases: List[BenchmarkTestCase] = Field(default_factory=list)
 
@@ -48,6 +48,7 @@ class RetrievalMetrics(BaseModel):
     recall_at_3: float
     recall_at_5: float
     mrr: float
+    ndcg_at_5: float
     relevant_found: int
     total_expected: int
 
@@ -58,6 +59,8 @@ class RerankerMetrics(BaseModel):
     first_relevant_rank_after: Optional[int] = None
     position_shift: int = 0
     promoted_to_top3: bool = False
+    mrr_before: Optional[float] = None
+    mrr_after: Optional[float] = None
 
 
 class CitationMetrics(BaseModel):
@@ -75,13 +78,31 @@ class RefusalMetrics(BaseModel):
     false_refusal: bool
 
 
+class JudgeOutputSchema(BaseModel):
+    """
+    Structured, strongly typed output from LLM and deterministic judges.
+    Covers Faithfulness, Correctness, Completeness, and Citation Correctness.
+    """
+    faithfulness: float = Field(ge=0.0, le=1.0, description="Score 0.0-1.0 measuring factual grounding in evidence.")
+    correctness: float = Field(ge=0.0, le=1.0, description="Score 0.0-1.0 measuring factual equivalence with ground truth.")
+    completeness: float = Field(ge=0.0, le=1.0, description="Score 0.0-1.0 measuring coverage of all required key points.")
+    citation_correctness: float = Field(default=1.0, ge=0.0, le=1.0, description="Score 0.0-1.0 measuring validity of cited source tags.")
+    supported: bool = Field(default=True, description="Whether claims are fully grounded without hallucination.")
+    reasoning: str = Field(default="", description="Detailed qualitative explanation for scores.")
+    unsupported_claims: List[str] = Field(default_factory=list, description="Claims made in answer not supported by context.")
+
+
 class CaseEvaluationMetrics(BaseModel):
     """Aggregated evaluation metrics for a single benchmark test case."""
     recall_at_3: float
     recall_at_5: float
     mrr: float
+    ndcg_at_5: float
     citation_precision: float
     citation_coverage: float
+    faithfulness: Optional[float] = None
+    correctness: Optional[float] = None
+    completeness: Optional[float] = None
     total_latency_ms: float
     passed: bool
     failure_reason: Optional[str] = None
@@ -101,10 +122,16 @@ class EvalRunSummary(BaseModel):
     recall_at_3: Optional[float] = None
     recall_at_5: Optional[float] = None
     mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
     citation_precision: Optional[float] = None
     citation_coverage: Optional[float] = None
     correct_refusal_rate: Optional[float] = None
     false_refusal_rate: Optional[float] = None
+    mean_faithfulness: Optional[float] = None
+    mean_correctness: Optional[float] = None
+    mean_completeness: Optional[float] = None
+    mean_citation_correctness: Optional[float] = None
+    mean_latency_ms: Optional[float] = None
     latency_p95_ms: Optional[float] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -127,8 +154,12 @@ class EvalRunResultItem(BaseModel):
     recall_at_3: Optional[float] = None
     recall_at_5: Optional[float] = None
     mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
     citation_precision: Optional[float] = None
     citation_coverage: Optional[float] = None
+    faithfulness: Optional[float] = None
+    correctness: Optional[float] = None
+    completeness: Optional[float] = None
     total_latency_ms: Optional[float] = None
     failure_reason: Optional[str] = None
     created_at: datetime

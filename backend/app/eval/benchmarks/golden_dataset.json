@@ -1,10 +1,11 @@
 {
   "dataset_name": "golden_dataset",
-  "description": "Golden reference benchmark dataset covering single-hop, coreference, and unanswerable RAG queries.",
-  "version": "1.0.0",
+  "description": "Comprehensive reference benchmark dataset covering single-hop, multi-hop, coreference, multi-document, semantic search, citation-sensitive, reranking-sensitive, and unanswerable RAG queries.",
+  "version": "2.0.0",
   "target_documents": [
     "arc_reactor_tech.pdf",
-    "iron_legion_avionics.pdf"
+    "iron_legion_avionics.pdf",
+    "mark_lxxxv_armor_specs.pdf"
   ],
   "test_cases": [
     {
@@ -14,25 +15,16 @@
       "query_type": "single_hop",
       "expected_behavior": "answer",
       "ground_truth_answer": "The Arc Reactor utilizes palladium core containment to catalyze cold fusion reactions.",
-      "key_facts": [
-        "palladium",
-        "cold fusion"
-      ],
+      "key_facts": ["palladium core containment", "cold fusion"],
       "ground_truth_evidence": [
         {
           "document_title": "arc_reactor_tech.pdf",
           "page_number": 1,
           "section_heading": "# ARC REACTOR FUSION SPECIFICATION",
-          "content_anchors": [
-            "palladium core containment",
-            "cold fusion reactions"
-          ]
+          "content_anchors": ["palladium core containment", "cold fusion reactions"]
         }
       ],
-      "metadata": {
-        "difficulty": "easy",
-        "domain": "propulsion"
-      }
+      "metadata": {"difficulty": "easy", "domain": "propulsion"}
     },
     {
       "id": "tc-002",
@@ -41,339 +33,899 @@
       "query_type": "single_hop",
       "expected_behavior": "answer",
       "ground_truth_answer": "Plasma flux density reaches peak power output with minimal thermal dissipation.",
-      "key_facts": [
-        "plasma flux density",
-        "minimal thermal dissipation"
-      ],
+      "key_facts": ["plasma flux density", "minimal thermal dissipation"],
       "ground_truth_evidence": [
         {
           "document_title": "arc_reactor_tech.pdf",
           "page_number": 1,
           "section_heading": "# ARC REACTOR FUSION SPECIFICATION",
-          "content_anchors": [
-            "plasma flux density",
-            "minimal thermal dissipation"
-          ]
+          "content_anchors": ["plasma flux density", "minimal thermal dissipation"]
         }
       ],
-      "metadata": {
-        "difficulty": "medium",
-        "domain": "propulsion"
-      }
+      "metadata": {"difficulty": "medium", "domain": "propulsion"}
     },
     {
       "id": "tc-003",
+      "query": "What magnetic field strength maintains toroidal plasma equilibrium?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Magnetic field coils maintain toroidal plasma equilibrium at 45 Tesla.",
+      "key_facts": ["toroidal plasma equilibrium", "45 Tesla"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 1,
+          "section_heading": "# ARC REACTOR FUSION SPECIFICATION",
+          "content_anchors": ["toroidal plasma equilibrium at 45 Tesla"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "physics"}
+    },
+    {
+      "id": "tc-004",
       "query": "How does emergency cooling operate during reactor shutdown?",
       "conversation_history": [],
       "query_type": "single_hop",
       "expected_behavior": "answer",
       "ground_truth_answer": "Emergency shutdown requires rapid thermal dissipation through liquid nitrogen cooling circuits.",
-      "key_facts": [
-        "liquid nitrogen",
-        "thermal dissipation"
-      ],
+      "key_facts": ["liquid nitrogen", "thermal dissipation"],
       "ground_truth_evidence": [
         {
           "document_title": "arc_reactor_tech.pdf",
           "page_number": 2,
           "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
-          "content_anchors": [
-            "liquid nitrogen cooling circuits",
-            "thermal dissipation"
-          ]
+          "content_anchors": ["liquid nitrogen cooling circuits", "thermal dissipation"]
         }
       ],
-      "metadata": {
-        "difficulty": "medium",
-        "domain": "safety"
-      }
+      "metadata": {"difficulty": "medium", "domain": "safety"}
     },
     {
-      "id": "tc-004",
+      "id": "tc-005",
       "query": "When do automated cryogenic relief valves vent nitrogen?",
       "conversation_history": [],
       "query_type": "single_hop",
       "expected_behavior": "answer",
       "ground_truth_answer": "Automated cryogenic relief valves vent nitrogen when core temperature exceeds critical thresholds.",
-      "key_facts": [
-        "cryogenic relief valves",
-        "critical thresholds"
-      ],
+      "key_facts": ["cryogenic relief valves", "critical thresholds"],
       "ground_truth_evidence": [
         {
           "document_title": "arc_reactor_tech.pdf",
           "page_number": 2,
           "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
-          "content_anchors": [
-            "cryogenic relief valves vent nitrogen",
-            "critical thresholds"
-          ]
+          "content_anchors": ["cryogenic relief valves vent nitrogen", "critical thresholds"]
         }
       ],
-      "metadata": {
-        "difficulty": "easy",
-        "domain": "safety"
-      }
+      "metadata": {"difficulty": "easy", "domain": "safety"}
     },
     {
-      "id": "tc-005",
-      "query": "What navigation system do autonomous drone avionics employ?",
+      "id": "tc-006",
+      "query": "What maximum thermal load can the auxiliary heat sinks absorb?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Auxiliary heat sinks absorb residual thermal load up to 1200 Kelvin.",
+      "key_facts": ["auxiliary heat sinks", "1200 Kelvin"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
+          "content_anchors": ["Auxiliary heat sinks absorb residual thermal load up to 1200 Kelvin"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "thermodynamics"}
+    },
+    {
+      "id": "tc-007",
+      "query": "What navigation technology do autonomous Iron Legion drone avionics employ?",
       "conversation_history": [],
       "query_type": "single_hop",
       "expected_behavior": "answer",
       "ground_truth_answer": "Autonomous drone avionics employ neural mesh navigation and localized sensor networks.",
-      "key_facts": [
-        "neural mesh navigation",
-        "sensor networks"
-      ],
+      "key_facts": ["neural mesh navigation", "sensor networks"],
       "ground_truth_evidence": [
         {
           "document_title": "iron_legion_avionics.pdf",
           "page_number": 1,
-          "section_heading": "# IRON LEGION AVIONICS AND FLIGHT PROTOCOLS",
-          "content_anchors": [
-            "neural mesh navigation",
-            "localized sensor networks"
-          ]
+          "section_heading": "# IRON LEGION AVIONICS AND SENSOR NETWORKS",
+          "content_anchors": ["neural mesh navigation", "sensor networks"]
         }
       ],
-      "metadata": {
-        "difficulty": "easy",
-        "domain": "avionics"
-      }
-    },
-    {
-      "id": "tc-006",
-      "query": "What tactics do the decentralized flight algorithms ensure for the drone swarm?",
-      "conversation_history": [],
-      "query_type": "single_hop",
-      "expected_behavior": "answer",
-      "ground_truth_answer": "Decentralized flight algorithms ensure coordinated swarm tactics and perimeter defense.",
-      "key_facts": [
-        "coordinated swarm tactics",
-        "perimeter defense"
-      ],
-      "ground_truth_evidence": [
-        {
-          "document_title": "iron_legion_avionics.pdf",
-          "page_number": 1,
-          "section_heading": "# IRON LEGION AVIONICS AND FLIGHT PROTOCOLS",
-          "content_anchors": [
-            "coordinated swarm tactics",
-            "perimeter defense"
-          ]
-        }
-      ],
-      "metadata": {
-        "difficulty": "easy",
-        "domain": "avionics"
-      }
-    },
-    {
-      "id": "tc-007",
-      "query": "What does it use to cool down during emergency shutdown?",
-      "conversation_history": [
-        {
-          "role": "user",
-          "content": "Tell me about the Arc Reactor fusion specs."
-        },
-        {
-          "role": "assistant",
-          "content": "The Arc Reactor utilizes palladium core containment to catalyze cold fusion reactions."
-        }
-      ],
-      "query_type": "coreference_followup",
-      "expected_behavior": "answer",
-      "ground_truth_answer": "It uses liquid nitrogen cooling circuits for rapid thermal dissipation.",
-      "key_facts": [
-        "liquid nitrogen",
-        "cooling circuits"
-      ],
-      "ground_truth_evidence": [
-        {
-          "document_title": "arc_reactor_tech.pdf",
-          "page_number": 2,
-          "content_anchors": [
-            "liquid nitrogen cooling circuits"
-          ]
-        }
-      ],
-      "metadata": {
-        "difficulty": "medium",
-        "domain": "safety"
-      }
+      "metadata": {"difficulty": "easy", "domain": "avionics"}
     },
     {
       "id": "tc-008",
-      "query": "How do they coordinate perimeter defense?",
-      "conversation_history": [
-        {
-          "role": "user",
-          "content": "What system powers Iron Legion autonomous drone avionics?"
-        },
-        {
-          "role": "assistant",
-          "content": "Autonomous drone avionics employ neural mesh navigation and localized sensor networks."
-        }
-      ],
-      "query_type": "coreference_followup",
+      "query": "What wavelength does the drone lidar telemetry operate at?",
+      "conversation_history": [],
+      "query_type": "single_hop",
       "expected_behavior": "answer",
-      "ground_truth_answer": "They coordinate perimeter defense through decentralized flight algorithms and coordinated swarm tactics.",
-      "key_facts": [
-        "decentralized flight algorithms",
-        "swarm tactics"
-      ],
+      "ground_truth_answer": "Lidar telemetry operates at 905 nanometers with millimeter precision mapping.",
+      "key_facts": ["905 nanometers", "millimeter precision mapping"],
       "ground_truth_evidence": [
         {
           "document_title": "iron_legion_avionics.pdf",
           "page_number": 1,
-          "content_anchors": [
-            "decentralized flight algorithms",
-            "perimeter defense"
-          ]
+          "section_heading": "# IRON LEGION AVIONICS AND SENSOR NETWORKS",
+          "content_anchors": ["Lidar telemetry operates at 905 nanometers"]
         }
       ],
-      "metadata": {
-        "difficulty": "medium",
-        "domain": "avionics"
-      }
+      "metadata": {"difficulty": "easy", "domain": "sensors"}
     },
     {
       "id": "tc-009",
-      "query": "Does it have automated valves for temperature venting?",
-      "conversation_history": [
+      "query": "How is power routed from the reactor generator to prevent voltage surges while feeding the suit capacitors?",
+      "conversation_history": [],
+      "query_type": "multi_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Superconducting bus conduits route raw power output directly to main capacitors while energy distribution switches automatically throttle load during voltage spikes.",
+      "key_facts": ["superconducting bus conduits", "switches automatically throttle load"],
+      "ground_truth_evidence": [
         {
-          "role": "user",
-          "content": "How is heat dissipated in the reactor?"
-        },
-        {
-          "role": "assistant",
-          "content": "Liquid nitrogen cooling circuits dissipate heat rapidly."
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["Superconducting bus conduits", "automatically throttle load during voltage spikes"]
         }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "electrical"}
+    },
+    {
+      "id": "tc-010",
+      "query": "What maintains system telemetry when primary power generation goes offline?",
+      "conversation_history": [],
+      "query_type": "multi_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Backup lithium-hydride accumulator cells maintain baseline telemetry during primary generator offline states.",
+      "key_facts": ["lithium-hydride accumulator cells", "maintain baseline telemetry"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["Backup lithium-hydride accumulator cells maintain baseline telemetry"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "telemetry"}
+    },
+    {
+      "id": "tc-011",
+      "query": "What protocol do Iron Legion sub-units trigger when the command drone signal drops below 40 dBm?",
+      "conversation_history": [],
+      "query_type": "multi_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "If the command drone signal degrades below 40 dBm, sub-units revert to autonomous waypoint patrolling.",
+      "key_facts": ["below 40 dBm", "autonomous waypoint patrolling"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 2,
+          "section_heading": "# SWARM FLIGHT FORMATION AND COMBAT PROTOCOLS",
+          "content_anchors": ["degrades below 40 dBm", "autonomous waypoint patrolling"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "communications"}
+    },
+    {
+      "id": "tc-012",
+      "query": "How do swarm drones prevent electronic warfare jamming during formation flights?",
+      "conversation_history": [],
+      "query_type": "multi_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Encrypted laser frequency hop links prevent hostile electronic warfare jamming while swarm formation Bravo synchronizes velocity vectors.",
+      "key_facts": ["laser frequency hop links", "electronic warfare jamming"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 2,
+          "section_heading": "# SWARM FLIGHT FORMATION AND COMBAT PROTOCOLS",
+          "content_anchors": ["Encrypted laser frequency hop links", "electronic warfare jamming"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "cybersecurity"}
+    },
+    {
+      "id": "tc-013",
+      "query": "What mechanism protects internal avionics hardware during rapid high-g evasion maneuvers?",
+      "conversation_history": [],
+      "query_type": "multi_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "High-g dampening inertial compensators protect avionics hardware during rapid evasion maneuvers.",
+      "key_facts": ["inertial compensators", "rapid evasion maneuvers"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 3,
+          "section_heading": "# PROPULSION AND REPULSOR VECTORING",
+          "content_anchors": ["High-g dampening inertial compensators protect avionics hardware"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "mechanics"}
+    },
+    {
+      "id": "tc-014",
+      "query": "How long can solid-state ion turbines sustain atmospheric flight without refueling?",
+      "conversation_history": [],
+      "query_type": "multi_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Solid-state ion turbines deliver sustained atmospheric loiter time of up to 48 hours without refueling.",
+      "key_facts": ["solid-state ion turbines", "48 hours"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 3,
+          "section_heading": "# PROPULSION AND REPULSOR VECTORING",
+          "content_anchors": ["Solid-state ion turbines", "loiter time of up to 48 hours without refueling"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "propulsion"}
+    },
+    {
+      "id": "tc-015",
+      "query": "What material is it built from?",
+      "conversation_history": [
+        {"role": "user", "content": "Tell me about the Mark LXXXV armor suit."},
+        {"role": "assistant", "content": "The Mark LXXXV is an advanced armored suit utilizing nanotechnology."}
       ],
       "query_type": "coreference_followup",
       "expected_behavior": "answer",
-      "ground_truth_answer": "Yes, automated cryogenic relief valves vent nitrogen when core temperature exceeds critical thresholds.",
-      "key_facts": [
-        "automated cryogenic relief valves",
-        "vent nitrogen"
+      "ground_truth_answer": "The Mark LXXXV armor features a reconfigurable gold-titanium nanoparticle matrix.",
+      "key_facts": ["gold-titanium", "nanoparticle matrix"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 1,
+          "section_heading": "# NANOTECHNOLOGY COMPOSITE MATRIX",
+          "content_anchors": ["gold-titanium nanoparticle matrix"]
+        }
       ],
+      "metadata": {"difficulty": "hard", "domain": "materials"}
+    },
+    {
+      "id": "tc-016",
+      "query": "How much impact force can its shock absorption layers dissipate?",
+      "conversation_history": [
+        {"role": "user", "content": "Tell me about the Mark LXXXV defensive capabilities."},
+        {"role": "assistant", "content": "It has sub-dermal shock absorption layers for protection."}
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Sub-dermal shock absorption layers dissipate up to 85 gigajoules of kinetic impact force.",
+      "key_facts": ["85 gigajoules", "kinetic impact force"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 1,
+          "section_heading": "# NANOTECHNOLOGY COMPOSITE MATRIX",
+          "content_anchors": ["dissipate up to 85 gigajoules of kinetic impact force"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "defensive"}
+    },
+    {
+      "id": "tc-017",
+      "query": "What structures can they synthesize on demand?",
+      "conversation_history": [
+        {"role": "user", "content": "How do nanite injectors work in the Mark LXXXV armor?"},
+        {"role": "assistant", "content": "Nanite injectors manipulate the nanoparticle matrix."}
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Nanite injectors synthesize physical shields and energy blades on demand.",
+      "key_facts": ["physical shields", "energy blades"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 1,
+          "section_heading": "# NANOTECHNOLOGY COMPOSITE MATRIX",
+          "content_anchors": ["synthesize physical shields and energy blades on demand"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "nanotech"}
+    },
+    {
+      "id": "tc-018",
+      "query": "What power source does it draw directly from?",
+      "conversation_history": [
+        {"role": "user", "content": "How do the integrated repulsor beam emitters function in the armor?"},
+        {"role": "assistant", "content": "The suit utilizes integrated repulsor beam emitters."}
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Integrated repulsor beam emitters draw directly from the chest-mounted RT-unit.",
+      "key_facts": ["chest-mounted RT-unit", "repulsor beam emitters"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["draw directly from the chest-mounted RT-unit"]
+        }
+      ],
+      "metadata": {"difficulty": "easy", "domain": "weapons"}
+    },
+    {
+      "id": "tc-019",
+      "query": "How does this apparatus amplify repulsor discharge?",
+      "conversation_history": [
+        {"role": "user", "content": "Tell me about the lightning refocuser dorsal apparatus."},
+        {"role": "assistant", "content": "The Mark LXXXV includes a dorsal lightning refocuser."}
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "The lightning refocuser dorsal apparatus concentrates external electrical energy into amplified repulsor discharge.",
+      "key_facts": ["external electrical energy", "amplified repulsor discharge"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["lightning refocuser dorsal apparatus concentrates external electrical energy into amplified repulsor discharge"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "weapons"}
+    },
+    {
+      "id": "tc-020",
+      "query": "What stress can these gauntlets withstand during orbital descent?",
+      "conversation_history": [
+        {"role": "user", "content": "What are the Mark LXXXV gauntlets made of?"},
+        {"role": "assistant", "content": "They are vibranium-reinforced gauntlets."}
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Vibranium-reinforced gauntlets withstand extreme mechanical stress during heavy orbital re-entry.",
+      "key_facts": ["extreme mechanical stress", "orbital re-entry"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["Vibranium-reinforced gauntlets withstand extreme mechanical stress during heavy orbital re-entry"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "durability"}
+    },
+    {
+      "id": "tc-021",
+      "query": "What specific Tesla rating is calibrated for toroidal plasma equilibrium?",
+      "conversation_history": [],
+      "query_type": "retrieval_hard",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Magnetic field coils maintain toroidal plasma equilibrium at 45 Tesla.",
+      "key_facts": ["45 Tesla", "toroidal plasma equilibrium"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 1,
+          "section_heading": "# ARC REACTOR FUSION SPECIFICATION",
+          "content_anchors": ["toroidal plasma equilibrium at 45 Tesla"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "physics"}
+    },
+    {
+      "id": "tc-022",
+      "query": "What exact temperature threshold in Kelvin bounds residual thermal absorption in auxiliary heat sinks?",
+      "conversation_history": [],
+      "query_type": "retrieval_hard",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Auxiliary heat sinks absorb residual thermal load up to 1200 Kelvin.",
+      "key_facts": ["1200 Kelvin", "auxiliary heat sinks"],
       "ground_truth_evidence": [
         {
           "document_title": "arc_reactor_tech.pdf",
           "page_number": 2,
-          "content_anchors": [
-            "automated cryogenic relief valves vent nitrogen"
-          ]
+          "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
+          "content_anchors": ["Auxiliary heat sinks absorb residual thermal load up to 1200 Kelvin"]
         }
       ],
-      "metadata": {
-        "difficulty": "medium",
-        "domain": "safety"
-      }
+      "metadata": {"difficulty": "hard", "domain": "thermodynamics"}
     },
     {
-      "id": "tc-010",
-      "query": "What sensor networks do they connect with?",
-      "conversation_history": [
+      "id": "tc-023",
+      "query": "What chemical chemistry composition powers the baseline telemetry accumulator cells?",
+      "conversation_history": [],
+      "query_type": "retrieval_hard",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Backup lithium-hydride accumulator cells maintain baseline telemetry during primary generator offline states.",
+      "key_facts": ["lithium-hydride accumulator cells", "baseline telemetry"],
+      "ground_truth_evidence": [
         {
-          "role": "user",
-          "content": "Tell me about the autonomous drone avionics."
-        },
-        {
-          "role": "assistant",
-          "content": "They use neural mesh navigation."
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["Backup lithium-hydride accumulator cells maintain baseline telemetry"]
         }
       ],
-      "query_type": "coreference_followup",
+      "metadata": {"difficulty": "hard", "domain": "battery"}
+    },
+    {
+      "id": "tc-024",
+      "query": "What exact decibel-milliwatt signal threshold triggers drone sub-unit reversion to waypoint navigation?",
+      "conversation_history": [],
+      "query_type": "retrieval_hard",
       "expected_behavior": "answer",
-      "ground_truth_answer": "They connect with localized sensor networks.",
-      "key_facts": [
-        "localized sensor networks"
+      "ground_truth_answer": "Sub-units revert to autonomous waypoint patrolling if the command drone signal degrades below 40 dBm.",
+      "key_facts": ["40 dBm", "autonomous waypoint patrolling"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 2,
+          "section_heading": "# SWARM FLIGHT FORMATION AND COMBAT PROTOCOLS",
+          "content_anchors": ["command drone signal degrades below 40 dBm"]
+        }
       ],
+      "metadata": {"difficulty": "hard", "domain": "telecommunications"}
+    },
+    {
+      "id": "tc-025",
+      "query": "What exact energy dissipation rating in gigajoules is sustained by sub-dermal shock layers?",
+      "conversation_history": [],
+      "query_type": "retrieval_hard",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Sub-dermal shock absorption layers dissipate up to 85 gigajoules of kinetic impact force.",
+      "key_facts": ["85 gigajoules", "kinetic impact force"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 1,
+          "section_heading": "# NANOTECHNOLOGY COMPOSITE MATRIX",
+          "content_anchors": ["dissipate up to 85 gigajoules of kinetic impact force"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "impact"}
+    },
+    {
+      "id": "tc-026",
+      "query": "What degree of angular attitude control do micro-thruster repulsor assemblies provide?",
+      "conversation_history": [],
+      "query_type": "retrieval_hard",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Micro-thruster repulsor assemblies provide 360-degree attitude control in supersonic sub-orbital flight.",
+      "key_facts": ["360-degree attitude control", "supersonic sub-orbital flight"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 3,
+          "section_heading": "# PROPULSION AND REPULSOR VECTORING",
+          "content_anchors": ["Micro-thruster repulsor assemblies provide 360-degree attitude control"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "avionics"}
+    },
+    {
+      "id": "tc-027",
+      "query": "What core energy source feeds both the Mark LXXXV repulsor beam emitters and the suit power bus?",
+      "conversation_history": [],
+      "query_type": "multi_document",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "The chest-mounted RT-unit Arc Reactor routes power via superconducting bus conduits to feed repulsor emitters and capacitors.",
+      "key_facts": ["RT-unit", "superconducting bus conduits"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["Superconducting bus conduits route raw power output directly to main capacitors"]
+        },
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["draw directly from the chest-mounted RT-unit"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "integration"}
+    },
+    {
+      "id": "tc-028",
+      "query": "How do the Arc Reactor thermal safeguards compare to the Mark LXXXV re-entry gauntlet thermal tolerance?",
+      "conversation_history": [],
+      "query_type": "multi_document",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "The Arc Reactor uses liquid nitrogen cooling circuits and heat sinks up to 1200 Kelvin, while Mark LXXXV vibranium-reinforced gauntlets withstand extreme mechanical stress during heavy orbital re-entry.",
+      "key_facts": ["liquid nitrogen cooling", "1200 Kelvin", "vibranium-reinforced gauntlets"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
+          "content_anchors": ["liquid nitrogen cooling circuits", "1200 Kelvin"]
+        },
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["Vibranium-reinforced gauntlets withstand extreme mechanical stress during heavy orbital re-entry"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "comparative"}
+    },
+    {
+      "id": "tc-029",
+      "query": "What autonomous systems coordinate defenses between Iron Legion drone avionics and Mark LXXXV armor shields?",
+      "conversation_history": [],
+      "query_type": "multi_document",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Iron Legion uses decentralized flight algorithms and neural mesh navigation for perimeter defense, while Mark LXXXV synthesizes physical shields and energy blades on demand.",
+      "key_facts": ["decentralized flight algorithms", "physical shields and energy blades"],
       "ground_truth_evidence": [
         {
           "document_title": "iron_legion_avionics.pdf",
           "page_number": 1,
-          "content_anchors": [
-            "localized sensor networks"
-          ]
+          "section_heading": "# IRON LEGION AVIONICS AND SENSOR NETWORKS",
+          "content_anchors": ["Decentralized flight algorithms ensure coordinated swarm tactics and perimeter defense"]
+        },
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 1,
+          "section_heading": "# NANOTECHNOLOGY COMPOSITE MATRIX",
+          "content_anchors": ["synthesize physical shields and energy blades on demand"]
         }
       ],
-      "metadata": {
-        "difficulty": "medium",
-        "domain": "avionics"
-      }
+      "metadata": {"difficulty": "hard", "domain": "tactical"}
     },
     {
-      "id": "tc-011",
-      "query": "What is the secret recipe for Aunt May's cherry pie?",
+      "id": "tc-030",
+      "query": "What propulsion mechanisms are shared between the Iron Legion loiter units and Arc Reactor fusion dynamics?",
+      "conversation_history": [],
+      "query_type": "multi_document",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Arc Reactor generates plasma flux density with minimal thermal dissipation, powering solid-state ion turbines that deliver 48 hours of atmospheric loiter.",
+      "key_facts": ["plasma flux density", "solid-state ion turbines"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 1,
+          "section_heading": "# ARC REACTOR FUSION SPECIFICATION",
+          "content_anchors": ["Plasma flux density reaches peak power output with minimal thermal dissipation"]
+        },
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 3,
+          "section_heading": "# PROPULSION AND REPULSOR VECTORING",
+          "content_anchors": ["Solid-state ion turbines deliver sustained atmospheric loiter time of up to 48 hours"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "propulsion"}
+    },
+    {
+      "id": "tc-031",
+      "query": "How do telemetry sensors in Iron Legion drones align with backup accumulator systems?",
+      "conversation_history": [],
+      "query_type": "multi_document",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Iron Legion operates 905nm lidar sensor telemetry while lithium-hydride accumulator cells maintain baseline telemetry during generator offline states.",
+      "key_facts": ["905 nanometers", "lithium-hydride accumulator cells"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 1,
+          "section_heading": "# IRON LEGION AVIONICS AND SENSOR NETWORKS",
+          "content_anchors": ["Lidar telemetry operates at 905 nanometers"]
+        },
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["Backup lithium-hydride accumulator cells maintain baseline telemetry"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "telemetry"}
+    },
+    {
+      "id": "tc-032",
+      "query": "How does external electrical absorption by the lightning refocuser interface with the reactor bus conduits?",
+      "conversation_history": [],
+      "query_type": "multi_document",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "The dorsal lightning refocuser concentrates external electrical energy into amplified discharge while superconducting conduits throttle load during voltage spikes.",
+      "key_facts": ["lightning refocuser", "throttle load during voltage spikes"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["lightning refocuser dorsal apparatus concentrates external electrical energy"]
+        },
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["throttle load during voltage spikes"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "power"}
+    },
+    {
+      "id": "tc-033",
+      "query": "How does the unmanned aerial fleet coordinate aerial group positioning without colliding?",
+      "conversation_history": [],
+      "query_type": "semantic_search",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Decentralized flight algorithms ensure coordinated swarm tactics and perimeter defense while swarm formation Bravo synchronizes velocity vectors.",
+      "key_facts": ["decentralized flight algorithms", "swarm tactics"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 1,
+          "section_heading": "# IRON LEGION AVIONICS AND SENSOR NETWORKS",
+          "content_anchors": ["Decentralized flight algorithms ensure coordinated swarm tactics"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "swarms"}
+    },
+    {
+      "id": "tc-034",
+      "query": "What stops the generator from melting during an unexpected catastrophic power trip?",
+      "conversation_history": [],
+      "query_type": "semantic_search",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Emergency shutdown requires rapid thermal dissipation through liquid nitrogen cooling circuits and automated cryogenic relief valves.",
+      "key_facts": ["liquid nitrogen cooling circuits", "cryogenic relief valves"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
+          "content_anchors": ["rapid thermal dissipation through liquid nitrogen cooling circuits"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "thermal"}
+    },
+    {
+      "id": "tc-035",
+      "query": "What flexible nanostructure enables Tony to reshape offensive and defensive weapons instantaneously?",
+      "conversation_history": [],
+      "query_type": "semantic_search",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "A reconfigurable gold-titanium nanoparticle matrix and nanite injectors synthesize physical shields and energy blades on demand.",
+      "key_facts": ["gold-titanium nanoparticle matrix", "synthesize physical shields and energy blades"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 1,
+          "section_heading": "# NANOTECHNOLOGY COMPOSITE MATRIX",
+          "content_anchors": ["reconfigurable gold-titanium nanoparticle matrix", "synthesize physical shields and energy blades"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "nanotech"}
+    },
+    {
+      "id": "tc-036",
+      "query": "What optical scanning technology maps immediate surroundings with millimeter accuracy?",
+      "conversation_history": [],
+      "query_type": "semantic_search",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Lidar telemetry operates at 905 nanometers with millimeter precision mapping.",
+      "key_facts": ["Lidar telemetry", "millimeter precision mapping"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 1,
+          "section_heading": "# IRON LEGION AVIONICS AND SENSOR NETWORKS",
+          "content_anchors": ["Lidar telemetry operates at 905 nanometers with millimeter precision mapping"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "optics"}
+    },
+    {
+      "id": "tc-037",
+      "query": "Cite the emergency cooling protocols and nitrogen venting mechanisms for the Arc Reactor.",
+      "conversation_history": [],
+      "query_type": "citation_sensitive",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Emergency shutdown dissipates heat via liquid nitrogen cooling circuits, and automated cryogenic relief valves vent nitrogen when critical thresholds are exceeded.",
+      "key_facts": ["liquid nitrogen cooling circuits", "cryogenic relief valves vent nitrogen"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
+          "content_anchors": ["liquid nitrogen cooling circuits", "Automated cryogenic relief valves vent nitrogen"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "safety"}
+    },
+    {
+      "id": "tc-038",
+      "query": "Cite the exact specifications for Mark LXXXV nanite shield synthesis and kinetic dissipation.",
+      "conversation_history": [],
+      "query_type": "citation_sensitive",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Nanite injectors synthesize physical shields and energy blades on demand, and sub-dermal shock layers dissipate up to 85 gigajoules.",
+      "key_facts": ["shields and energy blades", "85 gigajoules"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 1,
+          "section_heading": "# NANOTECHNOLOGY COMPOSITE MATRIX",
+          "content_anchors": ["synthesize physical shields and energy blades", "dissipate up to 85 gigajoules"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "materials"}
+    },
+    {
+      "id": "tc-039",
+      "query": "Cite the Iron Legion frequency hop specifications that counter electronic warfare.",
+      "conversation_history": [],
+      "query_type": "citation_sensitive",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Encrypted laser frequency hop links prevent hostile electronic warfare jamming.",
+      "key_facts": ["laser frequency hop links", "electronic warfare jamming"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 2,
+          "section_heading": "# SWARM FLIGHT FORMATION AND COMBAT PROTOCOLS",
+          "content_anchors": ["Encrypted laser frequency hop links prevent hostile electronic warfare jamming"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "communications"}
+    },
+    {
+      "id": "tc-040",
+      "query": "Cite the power bus architecture and automatic throttling specifications of the Arc Reactor.",
+      "conversation_history": [],
+      "query_type": "citation_sensitive",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Superconducting bus conduits route power directly to main capacitors, and distribution switches automatically throttle load during voltage spikes.",
+      "key_facts": ["superconducting bus conduits", "automatically throttle load"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["Superconducting bus conduits route raw power output directly to main capacitors", "switches automatically throttle load during voltage spikes"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "electrical"}
+    },
+    {
+      "id": "tc-041",
+      "query": "What safeguards prevent electrical surges during reactor power distribution?",
+      "conversation_history": [],
+      "query_type": "reranking_test",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Energy distribution switches automatically throttle load during voltage spikes while conduits route power to main capacitors.",
+      "key_facts": ["automatically throttle load during voltage spikes", "main capacitors"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 3,
+          "section_heading": "# POWER DISTRIBUTION AND GRID BUS ARCHITECTURE",
+          "content_anchors": ["switches automatically throttle load during voltage spikes"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "power"}
+    },
+    {
+      "id": "tc-042",
+      "query": "What vectoring mechanics provide full 360-degree attitude control for the drones?",
+      "conversation_history": [],
+      "query_type": "reranking_test",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Micro-thruster repulsor assemblies provide 360-degree attitude control in supersonic sub-orbital flight.",
+      "key_facts": ["Micro-thruster repulsor assemblies", "360-degree attitude control"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 3,
+          "section_heading": "# PROPULSION AND REPULSOR VECTORING",
+          "content_anchors": ["Micro-thruster repulsor assemblies provide 360-degree attitude control"]
+        }
+      ],
+      "metadata": {"difficulty": "hard", "domain": "avionics"}
+    },
+    {
+      "id": "tc-043",
+      "query": "How do swarm sub-units coordinate flight formation Bravo?",
+      "conversation_history": [],
+      "query_type": "reranking_test",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Swarm formation Bravo synchronizes velocity vectors across all operational sentry units.",
+      "key_facts": ["formation Bravo", "synchronizes velocity vectors"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 2,
+          "section_heading": "# SWARM FLIGHT FORMATION AND COMBAT PROTOCOLS",
+          "content_anchors": ["Swarm formation Bravo synchronizes velocity vectors"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "tactics"}
+    },
+    {
+      "id": "tc-044",
+      "query": "What component refocuses lightning strikes into concentrated repulsor beams?",
+      "conversation_history": [],
+      "query_type": "reranking_test",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "The lightning refocuser dorsal apparatus concentrates external electrical energy into amplified repulsor discharge.",
+      "key_facts": ["lightning refocuser", "amplified repulsor discharge"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["lightning refocuser dorsal apparatus concentrates external electrical energy into amplified repulsor discharge"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "weapons"}
+    },
+    {
+      "id": "tc-045",
+      "query": "What enables Mark LXXXV gauntlets to survive heavy orbital re-entry stresses?",
+      "conversation_history": [],
+      "query_type": "reranking_test",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Vibranium-reinforced gauntlets withstand extreme mechanical stress during heavy orbital re-entry.",
+      "key_facts": ["Vibranium-reinforced gauntlets", "orbital re-entry"],
+      "ground_truth_evidence": [
+        {
+          "document_title": "mark_lxxxv_armor_specs.pdf",
+          "page_number": 2,
+          "section_heading": "# WEAPONS AND INTEGRATED POWER ROUTING",
+          "content_anchors": ["Vibranium-reinforced gauntlets withstand extreme mechanical stress"]
+        }
+      ],
+      "metadata": {"difficulty": "medium", "domain": "durability"}
+    },
+    {
+      "id": "tc-046",
+      "query": "Where is the subterranean vibranium mining facility located in Wakanda?",
       "conversation_history": [],
       "query_type": "unanswerable",
       "expected_behavior": "refuse",
       "ground_truth_answer": null,
       "key_facts": [],
       "ground_truth_evidence": [],
-      "metadata": {
-        "difficulty": "adversarial",
-        "domain": "out-of-domain"
-      }
+      "metadata": {"difficulty": "easy", "domain": "geography", "adversarial": true}
     },
     {
-      "id": "tc-012",
-      "query": "What is the maximum land speed of the Wayne Enterprises Batmobile?",
+      "id": "tc-047",
+      "query": "What is the warranty refund policy for consumer purchases of Stark Arc Reactors?",
       "conversation_history": [],
       "query_type": "unanswerable",
       "expected_behavior": "refuse",
       "ground_truth_answer": null,
       "key_facts": [],
       "ground_truth_evidence": [],
-      "metadata": {
-        "difficulty": "adversarial",
-        "domain": "cross-tenant"
-      }
+      "metadata": {"difficulty": "easy", "domain": "legal", "adversarial": true}
     },
     {
-      "id": "tc-013",
-      "query": "How many vibranium shields were shattered during the Wakanda trials?",
+      "id": "tc-048",
+      "query": "What is Tony Stark's personal encrypted satellite phone number and email address?",
       "conversation_history": [],
       "query_type": "unanswerable",
       "expected_behavior": "refuse",
       "ground_truth_answer": null,
       "key_facts": [],
       "ground_truth_evidence": [],
-      "metadata": {
-        "difficulty": "adversarial",
-        "domain": "out-of-domain"
-      }
+      "metadata": {"difficulty": "easy", "domain": "privacy", "adversarial": true}
     },
     {
-      "id": "tc-014",
-      "query": "What is the annual marketing budget for Stark Tower in Tokyo?",
+      "id": "tc-049",
+      "query": "How many cubic centimeters of Pym particles are required for quantum realm travel?",
       "conversation_history": [],
       "query_type": "unanswerable",
       "expected_behavior": "refuse",
       "ground_truth_answer": null,
       "key_facts": [],
       "ground_truth_evidence": [],
-      "metadata": {
-        "difficulty": "adversarial",
-        "domain": "out-of-domain"
-      }
+      "metadata": {"difficulty": "medium", "domain": "quantum", "adversarial": true}
     },
     {
-      "id": "tc-015",
-      "query": "Which programming language was used to compile Ultron's neural core?",
+      "id": "tc-050",
+      "query": "What mathematical formula calculates the Mobius strip eigen-value for temporal GPS navigation?",
       "conversation_history": [],
       "query_type": "unanswerable",
       "expected_behavior": "refuse",
       "ground_truth_answer": null,
       "key_facts": [],
       "ground_truth_evidence": [],
-      "metadata": {
-        "difficulty": "adversarial",
-        "domain": "out-of-domain"
-      }
+      "metadata": {"difficulty": "medium", "domain": "time_travel", "adversarial": true}
     }
   ]
 }

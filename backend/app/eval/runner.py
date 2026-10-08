@@ -3,13 +3,13 @@ Evaluation runner engine for Intelligence OS RAG pipeline.
 Executes version-controlled benchmarks against existing retrieval, reranking,
 and RAG generation services without duplicating production pipeline logic.
 Strictly isolated by enterprise tenant org_id.
+Supports both Deterministic and LLM judges, subset execution via limit, and comprehensive Phase 2 metrics.
 """
 from datetime import datetime, timezone
 import json
 import logging
 import math
 from pathlib import Path
-import re
 import time
 from typing import Any, Dict, List, Optional, Union
 import uuid
@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.eval.judges import BaseJudge, DeterministicJudge, JudgeResult
 from app.eval.metrics import (
     compute_citation_metrics,
+    compute_latency_percentiles,
+    compute_ndcg_at_k,
     compute_rank_shift,
     compute_refusal_metrics,
     compute_retrieval_metrics,
@@ -27,6 +29,7 @@ from app.eval.metrics import (
 )
 from app.models.evaluation import EvalRun, EvalRunResult
 from app.schemas.evaluation import BenchmarkDataset, BenchmarkTestCase
+from app.services.embedding_service import embedding_service, generate_deterministic_mock_embedding
 from app.services.retrieval_service import RetrievalService, SearchResultItem
 
 logger = logging.getLogger(__name__)
@@ -78,10 +81,14 @@ def resolve_query_with_history(query: str, history: List[Dict[str, str]]) -> str
         for entity in [
             "Arc Reactor",
             "Iron Legion",
+            "Mark LXXXV",
             "fusion specification",
             "cooling circuits",
             "drone avionics",
             "palladium",
+            "nanite",
+            "repulsor",
+            "vibranium",
         ]:
             if entity.lower() in content.lower() and entity.lower() not in query.lower():
                 if entity not in context_snippets:
@@ -97,7 +104,7 @@ class EvalRunner:
     Evaluation Runner orchestrating benchmark execution.
     - Scoped strictly to an organization (org_id tenant isolation)
     - Reuses existing RetrievalService & RerankerService
-    - Integrates with BaseJudge (defaults to DeterministicJudge)
+    - Integrates with BaseJudge (DeterministicJudge or LLMJudge)
     - Records strongly-typed metrics and JSON trace snapshots into the database
     """
 
@@ -108,6 +115,7 @@ class EvalRunner:
         judge: Optional[BaseJudge] = None,
         retrieval_service: Optional[RetrievalService] = None,
         reranker_service: Optional[Any] = None,
+        rag_service: Optional[Any] = None,
         offline: bool = True,
     ):
         self.db = db
@@ -119,15 +127,18 @@ class EvalRunner:
         else:
             from app.services.reranker_service import reranker_service as default_reranker
             self.reranker_service = default_reranker
+        self.rag_service = rag_service
         self.offline = offline
 
     async def run_benchmark(
         self,
         dataset_input: Union[BenchmarkDataset, str, Path],
         run_name: Optional[str] = None,
+        limit: Optional[int] = None,
     ) -> EvalRun:
         """
-        Executes a complete evaluation benchmark run and persists results to the database.
+        Executes an evaluation benchmark run and persists results to the database.
+        Optionally limits the number of test cases via limit (e.g., limit=10).
         """
         # 1. Load benchmark dataset
         if isinstance(dataset_input, (str, Path)):
@@ -138,9 +149,15 @@ class EvalRunner:
         else:
             dataset = dataset_input
 
+        test_cases = dataset.test_cases
+        if limit is not None and limit > 0:
+            test_cases = test_cases[:limit]
+            logger.info(f"Limiting benchmark execution to {len(test_cases)} test cases.")
+
+        judge_name = self.judge.__class__.__name__
         logger.info(
             f"Starting evaluation run for dataset '{dataset.dataset_name}' "
-            f"(v{dataset.version}) under Org {self.org_id}"
+            f"(v{dataset.version}) with judge '{judge_name}' under Org {self.org_id}"
         )
 
         run_id = uuid.uuid4()
@@ -150,14 +167,16 @@ class EvalRunner:
             dataset_name=dataset.dataset_name,
             dataset_version=dataset.version,
             status="RUNNING",
-            llm_provider="deterministic-offline" if self.offline else "gemini",
-            llm_model="deterministic" if self.offline else "gemini-2.5-flash",
+            llm_provider="deterministic-offline" if self.offline else getattr(self.judge, "provider", "gemini"),
+            llm_model="deterministic" if self.offline else getattr(self.judge, "model_name", "gemini-2.5-flash"),
             embedding_model="feature-hashing" if self.offline else "text-embedding-3-small",
             reranker_model="deterministic-cross-scoring",
-            total_test_cases=len(dataset.test_cases),
+            total_test_cases=len(test_cases),
             passed_test_cases=0,
             config_snapshot={
                 "offline": self.offline,
+                "judge": judge_name,
+                "limit": limit,
                 "top_k_retrieval": 10,
                 "top_k_rerank": 5,
                 "dataset_name": dataset.dataset_name,
@@ -173,8 +192,23 @@ class EvalRunner:
         results: List[EvalRunResult] = []
         latencies: List[float] = []
 
+        orig_gen = None
+        orig_batch = None
+        if self.offline:
+            orig_gen = embedding_service.generate_embedding
+            orig_batch = embedding_service.generate_embeddings_batch
+
+            async def _offline_gen(text: str) -> List[float]:
+                return generate_deterministic_mock_embedding(text)
+
+            async def _offline_batch(texts: List[str]) -> List[List[float]]:
+                return [generate_deterministic_mock_embedding(t) for t in texts]
+
+            embedding_service.generate_embedding = _offline_gen
+            embedding_service.generate_embeddings_batch = _offline_batch
+
         # 2. Iterate through benchmark test cases
-        for tc in dataset.test_cases:
+        for tc in test_cases:
             t0 = time.perf_counter()
 
             # Coreference and context resolution
@@ -239,7 +273,7 @@ class EvalRunner:
                     )
                     citations = []
 
-            # D. Compute Metrics
+            # D. Compute Deterministic Metrics
             retrieval_metrics = compute_retrieval_metrics(
                 retrieved_items, tc.ground_truth_evidence
             )
@@ -250,6 +284,7 @@ class EvalRunner:
                 citations, tc.ground_truth_evidence
             )
 
+            # E. Execute Judge
             judge_result: JudgeResult = await self.judge.evaluate(
                 query=tc.query,
                 generated_answer=generated_answer,
@@ -257,10 +292,8 @@ class EvalRunner:
                 contexts=[c.content for c in reranked_items],
                 key_facts=tc.key_facts,
                 expected_behavior=tc.expected_behavior,
-            )
-
-            refusal_metrics = compute_refusal_metrics(
-                judge_result.is_refusal, tc.expected_behavior
+                citations=citations,
+                expected_evidence=tc.ground_truth_evidence,
             )
 
             t_elapsed_ms = (time.perf_counter() - t0) * 1000.0
@@ -280,7 +313,15 @@ class EvalRunner:
                     + (judge_result.reasoning or "")
                 )
 
-            # Construct EvalRunResult model
+            # For refusal/unanswerable queries, retrieval and citation metrics are N/A (None)
+            rec_3 = retrieval_metrics.recall_at_3 if expected == "answer" else None
+            rec_5 = retrieval_metrics.recall_at_5 if expected == "answer" else None
+            mrr_val = retrieval_metrics.mrr if expected == "answer" else None
+            ndcg_val = retrieval_metrics.ndcg_at_5 if expected == "answer" else None
+            cit_prec = citation_metrics.precision if expected == "answer" else None
+            cit_cov = citation_metrics.coverage if expected == "answer" else None
+
+            # Construct EvalRunResult model with Phase 2 fields
             res = EvalRunResult(
                 id=uuid.uuid4(),
                 run_id=run_id,
@@ -292,11 +333,16 @@ class EvalRunner:
                 generated_answer=generated_answer,
                 passed=case_passed,
                 is_refusal=judge_result.is_refusal,
-                recall_at_3=retrieval_metrics.recall_at_3,
-                recall_at_5=retrieval_metrics.recall_at_5,
-                mrr=retrieval_metrics.mrr,
-                citation_precision=citation_metrics.precision,
-                citation_coverage=citation_metrics.coverage,
+                recall_at_3=rec_3,
+                recall_at_5=rec_5,
+                mrr=mrr_val,
+                ndcg_at_5=ndcg_val,
+                citation_precision=cit_prec,
+                citation_coverage=cit_cov,
+                faithfulness=judge_result.faithfulness,
+                correctness=judge_result.correctness,
+                completeness=judge_result.completeness,
+                citation_correctness=judge_result.citation_correctness,
                 total_latency_ms=round(t_elapsed_ms, 2),
                 retrieved_candidates=[serialize_candidate(c) for c in retrieved_items],
                 reranked_candidates=[serialize_candidate(c) for c in reranked_items],
@@ -306,6 +352,8 @@ class EvalRunner:
                     "promoted_to_top3": rerank_metrics.promoted_to_top3,
                     "rank_before": rerank_metrics.first_relevant_rank_before,
                     "rank_after": rerank_metrics.first_relevant_rank_after,
+                    "mrr_before": rerank_metrics.mrr_before,
+                    "mrr_after": rerank_metrics.mrr_after,
                     "effective_query": effective_query,
                 },
                 judge_output=judge_result.to_dict(),
@@ -318,12 +366,22 @@ class EvalRunner:
         total_cases = len(results)
         passed_count = sum(1 for r in results if r.passed)
 
-        # Averages for numeric metrics
-        avg_recall_3 = sum(r.recall_at_3 or 0.0 for r in results) / total_cases if total_cases else 0.0
-        avg_recall_5 = sum(r.recall_at_5 or 0.0 for r in results) / total_cases if total_cases else 0.0
-        avg_mrr = sum(r.mrr or 0.0 for r in results) / total_cases if total_cases else 0.0
-        avg_cit_prec = sum(r.citation_precision or 0.0 for r in results) / total_cases if total_cases else 0.0
-        avg_cit_cov = sum(r.citation_coverage or 0.0 for r in results) / total_cases if total_cases else 0.0
+        # Answerable subset for retrieval and citation metrics
+        answer_expected = [r for r in results if r.expected_behavior == "answer"]
+        ans_count = len(answer_expected)
+
+        avg_recall_3 = sum(r.recall_at_3 for r in answer_expected if r.recall_at_3 is not None) / ans_count if ans_count else 0.0
+        avg_recall_5 = sum(r.recall_at_5 for r in answer_expected if r.recall_at_5 is not None) / ans_count if ans_count else 0.0
+        avg_mrr = sum(r.mrr for r in answer_expected if r.mrr is not None) / ans_count if ans_count else 0.0
+        avg_ndcg_5 = sum(r.ndcg_at_5 for r in answer_expected if r.ndcg_at_5 is not None) / ans_count if ans_count else 0.0
+        avg_cit_prec = sum(r.citation_precision for r in answer_expected if r.citation_precision is not None) / ans_count if ans_count else 0.0
+        avg_cit_cov = sum(r.citation_coverage for r in answer_expected if r.citation_coverage is not None) / ans_count if ans_count else 0.0
+
+        # Judge-derived averages
+        avg_faithfulness = sum(r.faithfulness if r.faithfulness is not None else 1.0 for r in results) / total_cases if total_cases else 1.0
+        avg_correctness = sum(r.correctness if r.correctness is not None else 1.0 for r in results) / total_cases if total_cases else 1.0
+        avg_completeness = sum(r.completeness if r.completeness is not None else 1.0 for r in results) / total_cases if total_cases else 1.0
+        avg_cit_correctness = sum(r.citation_correctness if r.citation_correctness is not None else 1.0 for r in results) / total_cases if total_cases else 1.0
 
         # Refusal rates
         refuse_expected = [r for r in results if r.expected_behavior == "refuse"]
@@ -340,20 +398,28 @@ class EvalRunner:
             else 0.0
         )
 
-        p95_lat = compute_percentile(latencies, 95.0)
+        lat_percentiles = compute_latency_percentiles(latencies)
+        p95_lat = lat_percentiles["p95"]
+        mean_lat = lat_percentiles["mean"]
 
-        # Update EvalRun with summary metrics
+        # Update EvalRun with Phase 2 summary metrics
         eval_run.status = "COMPLETED"
         eval_run.completed_at = datetime.now(timezone.utc)
         eval_run.passed_test_cases = passed_count
         eval_run.recall_at_3 = round(avg_recall_3, 4)
         eval_run.recall_at_5 = round(avg_recall_5, 4)
         eval_run.mrr = round(avg_mrr, 4)
+        eval_run.ndcg_at_5 = round(avg_ndcg_5, 4)
         eval_run.citation_precision = round(avg_cit_prec, 4)
         eval_run.citation_coverage = round(avg_cit_cov, 4)
         eval_run.correct_refusal_rate = round(crr, 4)
         eval_run.false_refusal_rate = round(frr, 4)
-        eval_run.latency_p95_ms = round(p95_lat, 2)
+        eval_run.mean_faithfulness = round(avg_faithfulness, 4)
+        eval_run.mean_correctness = round(avg_correctness, 4)
+        eval_run.mean_completeness = round(avg_completeness, 4)
+        eval_run.mean_citation_correctness = round(avg_cit_correctness, 4)
+        eval_run.mean_latency_ms = mean_lat
+        eval_run.latency_p95_ms = p95_lat
 
         eval_run.summary_metrics = {
             "total_test_cases": total_cases,
@@ -362,12 +428,17 @@ class EvalRunner:
             "recall_at_3": round(avg_recall_3, 4),
             "recall_at_5": round(avg_recall_5, 4),
             "mrr": round(avg_mrr, 4),
+            "ndcg_at_5": round(avg_ndcg_5, 4),
             "citation_precision": round(avg_cit_prec, 4),
             "citation_coverage": round(avg_cit_cov, 4),
             "correct_refusal_rate": round(crr, 4),
             "false_refusal_rate": round(frr, 4),
-            "latency_p95_ms": round(p95_lat, 2),
-            "mean_latency_ms": round(sum(latencies) / len(latencies), 2) if latencies else 0.0,
+            "mean_faithfulness": round(avg_faithfulness, 4),
+            "mean_correctness": round(avg_correctness, 4),
+            "mean_completeness": round(avg_completeness, 4),
+            "mean_citation_correctness": round(avg_cit_correctness, 4),
+            "mean_latency_ms": mean_lat,
+            "latency_p95_ms": p95_lat,
         }
 
         await self.db.commit()
@@ -377,4 +448,10 @@ class EvalRunner:
             f"Completed evaluation run {eval_run.id}: "
             f"{passed_count}/{total_cases} passed (Pass Rate: {eval_run.summary_metrics['pass_rate']:.1%})"
         )
+
+        if orig_gen is not None:
+            embedding_service.generate_embedding = orig_gen
+        if orig_batch is not None:
+            embedding_service.generate_embeddings_batch = orig_batch
+
         return eval_run

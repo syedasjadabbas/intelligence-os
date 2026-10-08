@@ -3,6 +3,7 @@ Mathematical and rule-based evaluation metrics for RAG pipeline.
 Covers retrieval quality, reranker impact, citation validity, and refusal guardrails.
 All functions in this module are purely deterministic with zero external dependencies.
 """
+import math
 import re
 from typing import Any, Dict, List, Optional, Union
 from app.schemas.evaluation import (
@@ -64,11 +65,16 @@ def matches_evidence_anchor(
     norm_cand_title = _normalize_text(cand_title).replace(".pdf", "")
     norm_anchor_title = _normalize_text(anchor.document_title).replace(".pdf", "")
 
-    # Title check: must match (either contains or equals)
+    # Title check: must match (either exact match or close match)
     if not norm_cand_title or not norm_anchor_title:
         return False
-    if norm_anchor_title not in norm_cand_title and norm_cand_title not in norm_anchor_title:
-        return False
+    if norm_cand_title != norm_anchor_title:
+        if norm_anchor_title not in norm_cand_title and norm_cand_title not in norm_anchor_title:
+            return False
+        shorter = min(len(norm_cand_title), len(norm_anchor_title))
+        longer = max(len(norm_cand_title), len(norm_anchor_title))
+        if shorter / longer < 0.6:
+            return False
 
     # Page number check (if anchor specifies page_number, candidate page should match if available)
     if anchor.page_number is not None and cand_page is not None:
@@ -91,6 +97,11 @@ def matches_evidence_anchor(
             norm_ca = _normalize_text(ca)
             if norm_ca not in norm_content:
                 return False
+    else:
+        # If no content_anchors are specified, anchor MUST specify at least page_number or section_heading
+        # to prevent any arbitrary candidate from that document from matching erroneously
+        if anchor.page_number is None and not anchor.section_heading:
+            return False
 
     return True
 
@@ -102,11 +113,9 @@ def compute_recall_at_k(
 ) -> float:
     """
     Computes Recall@K: proportion of ground-truth evidence anchors retrieved within the top K results.
-    If ground_truth_anchors is empty (e.g., unanswerable test cases), returns 1.0.
+    If ground_truth_anchors is empty (e.g. unanswerable test cases), returns 0.0 (no evidence expected).
     """
-    if not ground_truth_anchors:
-        return 1.0
-    if not retrieved_candidates or k <= 0:
+    if not ground_truth_anchors or not retrieved_candidates or k <= 0:
         return 0.0
 
     top_k = retrieved_candidates[:k]
@@ -126,12 +135,9 @@ def compute_mrr(
 ) -> float:
     """
     Computes Mean Reciprocal Rank (MRR) for the first relevant evidence chunk.
-    If ground_truth_anchors is empty, returns 1.0.
-    If no relevant candidate is found, returns 0.0.
+    If ground_truth_anchors is empty or no relevant candidate is found, returns 0.0.
     """
-    if not ground_truth_anchors:
-        return 1.0
-    if not retrieved_candidates:
+    if not ground_truth_anchors or not retrieved_candidates:
         return 0.0
 
     for rank, cand in enumerate(retrieved_candidates, start=1):
@@ -142,14 +148,60 @@ def compute_mrr(
     return 0.0
 
 
+def compute_ndcg_at_k(
+    retrieved_candidates: List[Union[Dict[str, Any], Any]],
+    ground_truth_anchors: List[EvidenceAnchor],
+    k: int = 5,
+) -> float:
+    """
+    Computes Normalized Discounted Cumulative Gain at K (nDCG@K).
+    Uses binary relevance where each retrieved candidate covering a distinct,
+    previously unmatched ground-truth evidence anchor receives relevance credit (rel = 1.0).
+    Duplicate/redundant candidates matching an already covered anchor do not receive extra credit.
+
+    DCG@k = sum_{i=1}^k rel_i / log2(i + 1)
+    IDCG@k = sum_{i=1}^{min(|G|, k)} 1.0 / log2(i + 1)
+
+    If ground_truth_anchors is empty (e.g. unanswerable query), returns 0.0.
+    If IDCG == 0.0, returns 0.0.
+    Result is strictly clamped to [0.0, 1.0].
+    """
+    if not ground_truth_anchors or not retrieved_candidates or k <= 0:
+        return 0.0
+
+    top_k = retrieved_candidates[:k]
+    dcg = 0.0
+    covered_anchor_indices = set()
+
+    for i, cand in enumerate(top_k, start=1):
+        rel = 0.0
+        for anchor_idx, anchor in enumerate(ground_truth_anchors):
+            if anchor_idx not in covered_anchor_indices and matches_evidence_anchor(cand, anchor):
+                covered_anchor_indices.add(anchor_idx)
+                rel = 1.0
+                break
+        if rel > 0.0:
+            dcg += rel / math.log2(i + 1)
+
+    # Ideal DCG: top min(len(anchors), k) positions are relevant
+    ideal_count = min(len(ground_truth_anchors), k)
+    idcg = sum(1.0 / math.log2(i + 1) for i in range(1, ideal_count + 1))
+
+    if idcg <= 0.0:
+        return 0.0
+
+    return round(min(1.0, max(0.0, dcg / idcg)), 4)
+
+
 def compute_retrieval_metrics(
     retrieved_candidates: List[Union[Dict[str, Any], Any]],
     ground_truth_anchors: List[EvidenceAnchor],
 ) -> RetrievalMetrics:
-    """Computes Recall@3, Recall@5, and MRR for a retrieved candidate list."""
+    """Computes Recall@3, Recall@5, MRR, and nDCG@5 for a retrieved candidate list."""
     recall_3 = compute_recall_at_k(retrieved_candidates, ground_truth_anchors, k=3)
     recall_5 = compute_recall_at_k(retrieved_candidates, ground_truth_anchors, k=5)
     mrr = compute_mrr(retrieved_candidates, ground_truth_anchors)
+    ndcg_5 = compute_ndcg_at_k(retrieved_candidates, ground_truth_anchors, k=5)
 
     relevant_found = 0
     for anchor in ground_truth_anchors:
@@ -160,6 +212,7 @@ def compute_retrieval_metrics(
         recall_at_3=recall_3,
         recall_at_5=recall_5,
         mrr=mrr,
+        ndcg_at_5=ndcg_5,
         relevant_found=relevant_found,
         total_expected=len(ground_truth_anchors),
     )
@@ -171,10 +224,13 @@ def compute_rank_shift(
     ground_truth_anchors: List[EvidenceAnchor],
 ) -> RerankerMetrics:
     """
-    Measures the ranking shift of the first relevant chunk before and after reranking.
+    Measures the ranking shift and MRR delta of the first relevant chunk before and after reranking.
     """
     if not ground_truth_anchors:
-        return RerankerMetrics()
+        return RerankerMetrics(
+            mrr_before=None,
+            mrr_after=None,
+        )
 
     rank_before: Optional[int] = None
     for r, cand in enumerate(before_rerank, start=1):
@@ -198,12 +254,34 @@ def compute_rank_shift(
         if rank_before is None or rank_before > 3:
             promoted_to_top3 = True
 
+    mrr_before = round(1.0 / rank_before, 4) if rank_before else 0.0
+    mrr_after = round(1.0 / rank_after, 4) if rank_after else 0.0
+
     return RerankerMetrics(
         first_relevant_rank_before=rank_before,
         first_relevant_rank_after=rank_after,
         position_shift=shift,
         promoted_to_top3=promoted_to_top3,
+        mrr_before=mrr_before,
+        mrr_after=mrr_after,
     )
+
+
+compute_reranker_rank_improvement = compute_rank_shift
+
+
+def compute_latency_percentiles(latencies: List[float]) -> Dict[str, float]:
+    """Computes mean and 95th percentile latency from a list of latencies in milliseconds."""
+    if not latencies:
+        return {"mean": 0.0, "p95": 0.0}
+
+    mean_val = round(sum(latencies) / len(latencies), 2)
+    sorted_lat = sorted(latencies)
+    idx = int(0.95 * len(sorted_lat))
+    idx = min(idx, len(sorted_lat) - 1)
+    p95_val = round(sorted_lat[idx], 2)
+
+    return {"mean": mean_val, "p95": p95_val}
 
 
 def compute_citation_metrics(
@@ -324,3 +402,57 @@ def compute_key_facts_coverage(text: Optional[str], key_facts: List[str]) -> flo
                     found += 1
 
     return round(found / len(key_facts), 4)
+
+
+def evaluate_threshold(
+    value: Optional[float],
+    target: float,
+    op: str = ">=",
+    warn_target: Optional[float] = None,
+) -> str:
+    """
+    Evaluates whether an observed metric value passes, warns, or fails against a configured threshold.
+
+    Args:
+        value: The observed metric value (or None).
+        target: The target threshold for a PASS status.
+        op: Comparison operator ('>=', '<=', '<', '>', '==').
+        warn_target: Optional secondary boundary that earns a WARN status rather than a FAIL.
+
+    Returns:
+        'PASS', 'WARN', or 'FAIL'.
+    """
+    if value is None:
+        return "FAIL"
+
+    if op == ">=":
+        if value >= target:
+            return "PASS"
+        if warn_target is not None and value >= warn_target:
+            return "WARN"
+        return "FAIL"
+    elif op == "<=":
+        if value <= target:
+            return "PASS"
+        if warn_target is not None and value <= warn_target:
+            return "WARN"
+        return "FAIL"
+    elif op == "<":
+        if value < target:
+            return "PASS"
+        if warn_target is not None and value < warn_target:
+            return "WARN"
+        return "FAIL"
+    elif op == ">":
+        if value > target:
+            return "PASS"
+        if warn_target is not None and value > warn_target:
+            return "WARN"
+        return "FAIL"
+    elif op == "==":
+        if abs(value - target) < 1e-5:
+            return "PASS"
+        return "FAIL"
+    else:
+        raise ValueError(f"Unsupported comparison operator: {op}")
+
