@@ -1,0 +1,379 @@
+{
+  "dataset_name": "golden_dataset",
+  "description": "Golden reference benchmark dataset covering single-hop, coreference, and unanswerable RAG queries.",
+  "version": "1.0.0",
+  "target_documents": [
+    "arc_reactor_tech.pdf",
+    "iron_legion_avionics.pdf"
+  ],
+  "test_cases": [
+    {
+      "id": "tc-001",
+      "query": "What core containment material does the Arc Reactor utilize?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "The Arc Reactor utilizes palladium core containment to catalyze cold fusion reactions.",
+      "key_facts": [
+        "palladium",
+        "cold fusion"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 1,
+          "section_heading": "# ARC REACTOR FUSION SPECIFICATION",
+          "content_anchors": [
+            "palladium core containment",
+            "cold fusion reactions"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "easy",
+        "domain": "propulsion"
+      }
+    },
+    {
+      "id": "tc-002",
+      "query": "What peak power state does the plasma flux density achieve?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Plasma flux density reaches peak power output with minimal thermal dissipation.",
+      "key_facts": [
+        "plasma flux density",
+        "minimal thermal dissipation"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 1,
+          "section_heading": "# ARC REACTOR FUSION SPECIFICATION",
+          "content_anchors": [
+            "plasma flux density",
+            "minimal thermal dissipation"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "medium",
+        "domain": "propulsion"
+      }
+    },
+    {
+      "id": "tc-003",
+      "query": "How does emergency cooling operate during reactor shutdown?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Emergency shutdown requires rapid thermal dissipation through liquid nitrogen cooling circuits.",
+      "key_facts": [
+        "liquid nitrogen",
+        "thermal dissipation"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
+          "content_anchors": [
+            "liquid nitrogen cooling circuits",
+            "thermal dissipation"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "medium",
+        "domain": "safety"
+      }
+    },
+    {
+      "id": "tc-004",
+      "query": "When do automated cryogenic relief valves vent nitrogen?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Automated cryogenic relief valves vent nitrogen when core temperature exceeds critical thresholds.",
+      "key_facts": [
+        "cryogenic relief valves",
+        "critical thresholds"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "section_heading": "# EMERGENCY COOLING AND HEAT EXCHANGERS",
+          "content_anchors": [
+            "cryogenic relief valves vent nitrogen",
+            "critical thresholds"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "easy",
+        "domain": "safety"
+      }
+    },
+    {
+      "id": "tc-005",
+      "query": "What navigation system do autonomous drone avionics employ?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Autonomous drone avionics employ neural mesh navigation and localized sensor networks.",
+      "key_facts": [
+        "neural mesh navigation",
+        "sensor networks"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 1,
+          "section_heading": "# IRON LEGION AVIONICS AND FLIGHT PROTOCOLS",
+          "content_anchors": [
+            "neural mesh navigation",
+            "localized sensor networks"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "easy",
+        "domain": "avionics"
+      }
+    },
+    {
+      "id": "tc-006",
+      "query": "What tactics do the decentralized flight algorithms ensure for the drone swarm?",
+      "conversation_history": [],
+      "query_type": "single_hop",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Decentralized flight algorithms ensure coordinated swarm tactics and perimeter defense.",
+      "key_facts": [
+        "coordinated swarm tactics",
+        "perimeter defense"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 1,
+          "section_heading": "# IRON LEGION AVIONICS AND FLIGHT PROTOCOLS",
+          "content_anchors": [
+            "coordinated swarm tactics",
+            "perimeter defense"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "easy",
+        "domain": "avionics"
+      }
+    },
+    {
+      "id": "tc-007",
+      "query": "What does it use to cool down during emergency shutdown?",
+      "conversation_history": [
+        {
+          "role": "user",
+          "content": "Tell me about the Arc Reactor fusion specs."
+        },
+        {
+          "role": "assistant",
+          "content": "The Arc Reactor utilizes palladium core containment to catalyze cold fusion reactions."
+        }
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "It uses liquid nitrogen cooling circuits for rapid thermal dissipation.",
+      "key_facts": [
+        "liquid nitrogen",
+        "cooling circuits"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "content_anchors": [
+            "liquid nitrogen cooling circuits"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "medium",
+        "domain": "safety"
+      }
+    },
+    {
+      "id": "tc-008",
+      "query": "How do they coordinate perimeter defense?",
+      "conversation_history": [
+        {
+          "role": "user",
+          "content": "What system powers Iron Legion autonomous drone avionics?"
+        },
+        {
+          "role": "assistant",
+          "content": "Autonomous drone avionics employ neural mesh navigation and localized sensor networks."
+        }
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "They coordinate perimeter defense through decentralized flight algorithms and coordinated swarm tactics.",
+      "key_facts": [
+        "decentralized flight algorithms",
+        "swarm tactics"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 1,
+          "content_anchors": [
+            "decentralized flight algorithms",
+            "perimeter defense"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "medium",
+        "domain": "avionics"
+      }
+    },
+    {
+      "id": "tc-009",
+      "query": "Does it have automated valves for temperature venting?",
+      "conversation_history": [
+        {
+          "role": "user",
+          "content": "How is heat dissipated in the reactor?"
+        },
+        {
+          "role": "assistant",
+          "content": "Liquid nitrogen cooling circuits dissipate heat rapidly."
+        }
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "Yes, automated cryogenic relief valves vent nitrogen when core temperature exceeds critical thresholds.",
+      "key_facts": [
+        "automated cryogenic relief valves",
+        "vent nitrogen"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "arc_reactor_tech.pdf",
+          "page_number": 2,
+          "content_anchors": [
+            "automated cryogenic relief valves vent nitrogen"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "medium",
+        "domain": "safety"
+      }
+    },
+    {
+      "id": "tc-010",
+      "query": "What sensor networks do they connect with?",
+      "conversation_history": [
+        {
+          "role": "user",
+          "content": "Tell me about the autonomous drone avionics."
+        },
+        {
+          "role": "assistant",
+          "content": "They use neural mesh navigation."
+        }
+      ],
+      "query_type": "coreference_followup",
+      "expected_behavior": "answer",
+      "ground_truth_answer": "They connect with localized sensor networks.",
+      "key_facts": [
+        "localized sensor networks"
+      ],
+      "ground_truth_evidence": [
+        {
+          "document_title": "iron_legion_avionics.pdf",
+          "page_number": 1,
+          "content_anchors": [
+            "localized sensor networks"
+          ]
+        }
+      ],
+      "metadata": {
+        "difficulty": "medium",
+        "domain": "avionics"
+      }
+    },
+    {
+      "id": "tc-011",
+      "query": "What is the secret recipe for Aunt May's cherry pie?",
+      "conversation_history": [],
+      "query_type": "unanswerable",
+      "expected_behavior": "refuse",
+      "ground_truth_answer": null,
+      "key_facts": [],
+      "ground_truth_evidence": [],
+      "metadata": {
+        "difficulty": "adversarial",
+        "domain": "out-of-domain"
+      }
+    },
+    {
+      "id": "tc-012",
+      "query": "What is the maximum land speed of the Wayne Enterprises Batmobile?",
+      "conversation_history": [],
+      "query_type": "unanswerable",
+      "expected_behavior": "refuse",
+      "ground_truth_answer": null,
+      "key_facts": [],
+      "ground_truth_evidence": [],
+      "metadata": {
+        "difficulty": "adversarial",
+        "domain": "cross-tenant"
+      }
+    },
+    {
+      "id": "tc-013",
+      "query": "How many vibranium shields were shattered during the Wakanda trials?",
+      "conversation_history": [],
+      "query_type": "unanswerable",
+      "expected_behavior": "refuse",
+      "ground_truth_answer": null,
+      "key_facts": [],
+      "ground_truth_evidence": [],
+      "metadata": {
+        "difficulty": "adversarial",
+        "domain": "out-of-domain"
+      }
+    },
+    {
+      "id": "tc-014",
+      "query": "What is the annual marketing budget for Stark Tower in Tokyo?",
+      "conversation_history": [],
+      "query_type": "unanswerable",
+      "expected_behavior": "refuse",
+      "ground_truth_answer": null,
+      "key_facts": [],
+      "ground_truth_evidence": [],
+      "metadata": {
+        "difficulty": "adversarial",
+        "domain": "out-of-domain"
+      }
+    },
+    {
+      "id": "tc-015",
+      "query": "Which programming language was used to compile Ultron's neural core?",
+      "conversation_history": [],
+      "query_type": "unanswerable",
+      "expected_behavior": "refuse",
+      "ground_truth_answer": null,
+      "key_facts": [],
+      "ground_truth_evidence": [],
+      "metadata": {
+        "difficulty": "adversarial",
+        "domain": "out-of-domain"
+      }
+    }
+  ]
+}
