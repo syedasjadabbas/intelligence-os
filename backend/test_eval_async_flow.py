@@ -10,7 +10,7 @@ Verifies:
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 import uuid
@@ -253,7 +253,8 @@ async def run_async_evaluation_tests():
                 config_snapshot={},
                 summary_metrics={},
                 regression_summary={},
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(timezone.utc) - timedelta(hours=1),
+                started_at=datetime.now(timezone.utc) - timedelta(hours=1),
             )
             # 2. Actively running run in current process
             active_run = EvalRun(

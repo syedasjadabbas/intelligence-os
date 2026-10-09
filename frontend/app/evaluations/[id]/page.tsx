@@ -34,6 +34,7 @@ import {
   Filter,
   Check,
   ChevronLeft,
+  Ban,
 } from "lucide-react";
 
 interface PageProps {
@@ -45,11 +46,14 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
   const runId = resolvedParams.id;
 
   const { user, org } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
 
   // Run detail state
   const [run, setRun] = useState<EvaluationRunDetail | null>(null);
   const [loadingRun, setLoadingRun] = useState(true);
   const [runError, setRunError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   // Results list state
   const [results, setResults] = useState<EvaluationResultListItem[]>([]);
@@ -147,6 +151,24 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
     }
   };
 
+  // Cancel run handler (Phase 5C)
+  const handleCancelRun = async () => {
+    if (!isAdmin) return;
+    if (!confirm("Are you sure you want to cancel this evaluation run?")) return;
+    setCancelling(true);
+    setActionFeedback(null);
+    try {
+      await api.cancelEvaluation(runId);
+      setActionFeedback("Evaluation run cancelled successfully.");
+      await fetchRunDetail();
+      await fetchResults();
+    } catch (err: any) {
+      setRunError(err.message || "Failed to cancel evaluation run.");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   // Filtered in-memory search for query text
   const filteredResults = searchQuery.trim()
     ? results.filter(
@@ -221,6 +243,8 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
                     ? "bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse"
                     : run.status === "PENDING"
                     ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                    : run.status === "CANCELLED"
+                    ? "bg-slate-800 text-slate-300 border-slate-700"
                     : "bg-rose-500/15 text-rose-400 border-rose-500/30"
                 }`}
               >
@@ -230,6 +254,8 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : run.status === "PENDING" ? (
                   <Clock className="w-3.5 h-3.5" />
+                ) : run.status === "CANCELLED" ? (
+                  <Ban className="w-3.5 h-3.5 text-slate-400" />
                 ) : (
                   <XCircle className="w-3.5 h-3.5" />
                 )}
@@ -240,6 +266,22 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
                   : run.status}
               </span>
             </div>
+          )}
+
+          {isAdmin && run && (run.status === "PENDING" || run.status === "RUNNING") && (
+            <button
+              onClick={handleCancelRun}
+              disabled={cancelling}
+              className="py-1.5 px-3 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Cancel this evaluation run"
+            >
+              {cancelling ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Ban className="w-3.5 h-3.5" />
+              )}
+              <span>Cancel Run</span>
+            </button>
           )}
 
           <button
@@ -261,6 +303,28 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
           <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{runError}</span>
+          </div>
+        )}
+
+        {actionFeedback && (
+          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{actionFeedback}</span>
+          </div>
+        )}
+
+        {/* Cancellation Notice Banner */}
+        {run && run.status === "CANCELLED" && (
+          <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/80 flex items-center gap-3.5 animate-in fade-in">
+            <div className="p-2.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+              <Ban className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-white">Evaluation Run Cancelled</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {run.error_message || "This evaluation run was cancelled by an administrator."} Completed test cases ({run.progress_current ?? 0}/{run.total_test_cases}) and partial results are preserved below.
+              </p>
+            </div>
           </div>
         )}
 

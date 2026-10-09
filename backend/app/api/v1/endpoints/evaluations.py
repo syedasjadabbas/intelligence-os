@@ -353,6 +353,29 @@ async def delete_test_case(
     return None
 
 
+# =========================================================================
+# Phase 5C: Evaluation Run Recovery & Cancellation Endpoints
+# =========================================================================
+
+@router.post(
+    "/recover",
+    summary="Recover orphaned evaluation runs for tenant",
+    description="Recovers any interrupted or stale evaluation runs for the authenticated organization. Requires ADMIN role.",
+)
+async def recover_orphaned_runs(
+    db: AsyncSession = Depends(get_db),
+    current_admin: User = Depends(get_current_active_admin),
+):
+    recovered = await evaluation_service.recover_stale_or_orphaned_runs(
+        db=db,
+        org_id=current_admin.org_id,
+    )
+    return {
+        "recovered_count": len(recovered),
+        "recovered_run_ids": [str(r.id) for r in recovered],
+    }
+
+
 @router.get(
     "/{run_id}",
     response_model=EvaluationRunDetail,
@@ -375,6 +398,64 @@ async def get_evaluation_run(
             detail="Evaluation run not found",
         )
     return run
+
+
+@router.post(
+    "/{run_id}/cancel",
+    response_model=EvaluationRunDetail,
+    summary="Cancel an evaluation run",
+    description="Cancels an in-progress or queued evaluation run. Requires ADMIN role.",
+)
+async def cancel_evaluation_run(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_admin: User = Depends(get_current_active_admin),
+):
+    try:
+        return await evaluation_service.cancel_run(
+            db=db,
+            org_id=current_admin.org_id,
+            run_id=run_id,
+        )
+    except LookupError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation run not found",
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        )
+
+
+@router.post(
+    "/{run_id}/recover",
+    response_model=EvaluationRunDetail,
+    summary="Recover an interrupted evaluation run",
+    description="Recovers an orphaned or stuck evaluation run. Requires ADMIN role.",
+)
+async def recover_single_evaluation_run(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_admin: User = Depends(get_current_active_admin),
+):
+    try:
+        return await evaluation_service.recover_run(
+            db=db,
+            org_id=current_admin.org_id,
+            run_id=run_id,
+        )
+    except LookupError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation run not found",
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        )
 
 
 @router.get(

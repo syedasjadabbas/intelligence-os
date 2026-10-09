@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict, List, Optional, Union
 import uuid
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.eval.judges import BaseJudge, DeterministicJudge, JudgeResult
@@ -118,6 +118,7 @@ class EvalRunner:
         reranker_service: Optional[Any] = None,
         rag_service: Optional[Any] = None,
         offline: bool = True,
+        is_cancelled: Optional[Any] = None,
     ):
         self.db = db
         self.org_id = org_id
@@ -130,6 +131,19 @@ class EvalRunner:
             self.reranker_service = default_reranker
         self.rag_service = rag_service
         self.offline = offline
+        self.is_cancelled = is_cancelled
+
+    async def _is_run_cancelled(self, run_id: uuid.UUID) -> bool:
+        """
+        Checks whether an evaluation run has received a cancellation request.
+        Inspects in-memory callback token first, then queries the database record.
+        """
+        if self.is_cancelled and self.is_cancelled(run_id):
+            return True
+        stmt = select(EvalRun.status).where(EvalRun.id == run_id)
+        res = await self.db.execute(stmt)
+        status_val = res.scalar_one_or_none()
+        return status_val == "CANCELLED"
 
     async def run_benchmark(
         self,
@@ -181,6 +195,18 @@ class EvalRunner:
             run_id = existing_run_id
             eval_run = await self.db.get(EvalRun, existing_run_id)
             if eval_run is not None:
+                is_pre_cancelled = eval_run.status == "CANCELLED" or (self.is_cancelled and self.is_cancelled(run_id))
+                if is_pre_cancelled:
+                    logger.info(f"Evaluation run {run_id} is already CANCELLED. Halting before benchmark execution.")
+                    if eval_run.status != "CANCELLED":
+                        eval_run.status = "CANCELLED"
+                        eval_run.completed_at = datetime.now(timezone.utc)
+                        if not eval_run.error_message:
+                            eval_run.error_message = "Evaluation run was cancelled by user."
+                        await self.db.commit()
+                        await self.db.refresh(eval_run)
+                    return eval_run
+
                 eval_run.status = "RUNNING"
                 eval_run.dataset_name = dataset.dataset_name
                 eval_run.dataset_version = dataset.version
@@ -194,6 +220,9 @@ class EvalRunner:
                 eval_run.error_message = None
                 eval_run.config_snapshot = config_snapshot
                 eval_run.started_at = datetime.now(timezone.utc)
+                if not eval_run.summary_metrics:
+                    eval_run.summary_metrics = {}
+                eval_run.summary_metrics["last_heartbeat_at"] = datetime.now(timezone.utc).isoformat()
                 await self.db.commit()
                 await self.db.refresh(eval_run)
             else:
@@ -213,7 +242,7 @@ class EvalRunner:
                     progress_total=len(test_cases),
                     error_message=None,
                     config_snapshot=config_snapshot,
-                    summary_metrics={},
+                    summary_metrics={"last_heartbeat_at": datetime.now(timezone.utc).isoformat()},
                     regression_summary={},
                     started_at=datetime.now(timezone.utc),
                 )
@@ -264,9 +293,15 @@ class EvalRunner:
             embedding_service.generate_embedding = _offline_gen
             embedding_service.generate_embeddings_batch = _offline_batch
 
+        was_cancelled = False
         try:
             # 2. Iterate through benchmark test cases
             for tc in test_cases:
+                if await self._is_run_cancelled(run_id):
+                    logger.info(f"Evaluation run {run_id} detected cancellation. Halting further test case execution.")
+                    was_cancelled = True
+                    break
+
                 t0 = time.perf_counter()
 
                 # Coreference and context resolution
@@ -421,9 +456,37 @@ class EvalRunner:
                 self.db.add(res)
                 results.append(res)
                 eval_run.progress_current = len(results)
+                if not eval_run.summary_metrics:
+                    eval_run.summary_metrics = {}
+                eval_run.summary_metrics["last_heartbeat_at"] = datetime.now(timezone.utc).isoformat()
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(eval_run, "summary_metrics")
                 await self.db.commit()
 
-            # 3. Compute Aggregate Run Metrics
+            # 3. Check if run was cancelled mid-flight or right as loop finished
+            if was_cancelled or await self._is_run_cancelled(run_id):
+                logger.info(f"Finalizing CANCELLED evaluation run {run_id} (completed {len(results)} of {len(test_cases)} cases).")
+                eval_run = await self.db.get(EvalRun, run_id)
+                if eval_run is not None:
+                    eval_run.status = "CANCELLED"
+                    eval_run.completed_at = datetime.now(timezone.utc)
+                    if not eval_run.error_message:
+                        eval_run.error_message = "Evaluation run cancelled by user."
+                    eval_run.progress_current = len(results)
+                    eval_run.progress_total = len(test_cases)
+                    if not eval_run.summary_metrics:
+                        eval_run.summary_metrics = {}
+                    eval_run.summary_metrics["cancelled"] = True
+                    eval_run.summary_metrics["processed_test_cases"] = len(results)
+                    eval_run.summary_metrics["total_test_cases"] = len(test_cases)
+                    eval_run.summary_metrics["last_heartbeat_at"] = datetime.now(timezone.utc).isoformat()
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(eval_run, "summary_metrics")
+                    await self.db.commit()
+                    await self.db.refresh(eval_run)
+                return eval_run
+
+            # 4. Compute Aggregate Run Metrics
             total_cases = len(results)
             passed_count = sum(1 for r in results if r.passed)
 
@@ -463,29 +526,7 @@ class EvalRunner:
             p95_lat = lat_percentiles["p95"]
             mean_lat = lat_percentiles["mean"]
 
-            # Update EvalRun with Phase 2 summary metrics
-            eval_run.status = "COMPLETED"
-            eval_run.completed_at = datetime.now(timezone.utc)
-            eval_run.passed_test_cases = passed_count
-            eval_run.progress_current = total_cases
-            eval_run.progress_total = total_cases
-            eval_run.error_message = None
-            eval_run.recall_at_3 = round(avg_recall_3, 4)
-            eval_run.recall_at_5 = round(avg_recall_5, 4)
-            eval_run.mrr = round(avg_mrr, 4)
-            eval_run.ndcg_at_5 = round(avg_ndcg_5, 4)
-            eval_run.citation_precision = round(avg_cit_prec, 4)
-            eval_run.citation_coverage = round(avg_cit_cov, 4)
-            eval_run.correct_refusal_rate = round(crr, 4)
-            eval_run.false_refusal_rate = round(frr, 4)
-            eval_run.mean_faithfulness = round(avg_faithfulness, 4)
-            eval_run.mean_correctness = round(avg_correctness, 4)
-            eval_run.mean_completeness = round(avg_completeness, 4)
-            eval_run.mean_citation_correctness = round(avg_cit_correctness, 4)
-            eval_run.mean_latency_ms = mean_lat
-            eval_run.latency_p95_ms = p95_lat
-
-            eval_run.summary_metrics = {
+            summary_metrics_dict = {
                 "total_test_cases": total_cases,
                 "passed_test_cases": passed_count,
                 "pass_rate": round(passed_count / total_cases, 4) if total_cases else 0.0,
@@ -503,9 +544,65 @@ class EvalRunner:
                 "mean_citation_correctness": round(avg_cit_correctness, 4),
                 "mean_latency_ms": mean_lat,
                 "latency_p95_ms": p95_lat,
+                "last_heartbeat_at": datetime.now(timezone.utc).isoformat(),
             }
 
+            # Final check before completion: If cancellation arrived right as loop finished, preserve CANCELLED!
+            if was_cancelled or await self._is_run_cancelled(run_id):
+                logger.info(f"Cancellation detected right before completion for run {run_id}. Preserving CANCELLED status.")
+                eval_run = await self.db.get(EvalRun, run_id)
+                if eval_run is not None:
+                    eval_run.status = "CANCELLED"
+                    eval_run.completed_at = datetime.now(timezone.utc)
+                    if not eval_run.error_message:
+                        eval_run.error_message = "Evaluation run cancelled by user."
+                    eval_run.progress_current = total_cases
+                    await self.db.commit()
+                    await self.db.refresh(eval_run)
+                return eval_run
+
+            # Concurrency-safe atomic completion update: only transition to COMPLETED if current status is RUNNING
+            update_complete_stmt = (
+                update(EvalRun)
+                .where(
+                    EvalRun.id == run_id,
+                    EvalRun.status == "RUNNING",
+                )
+                .values(
+                    status="COMPLETED",
+                    completed_at=datetime.now(timezone.utc),
+                    passed_test_cases=passed_count,
+                    progress_current=total_cases,
+                    progress_total=total_cases,
+                    error_message=None,
+                    recall_at_3=round(avg_recall_3, 4),
+                    recall_at_5=round(avg_recall_5, 4),
+                    mrr=round(avg_mrr, 4),
+                    ndcg_at_5=round(avg_ndcg_5, 4),
+                    citation_precision=round(avg_cit_prec, 4),
+                    citation_coverage=round(avg_cit_cov, 4),
+                    correct_refusal_rate=round(crr, 4),
+                    false_refusal_rate=round(frr, 4),
+                    mean_faithfulness=round(avg_faithfulness, 4),
+                    mean_correctness=round(avg_correctness, 4),
+                    mean_completeness=round(avg_completeness, 4),
+                    mean_citation_correctness=round(avg_cit_correctness, 4),
+                    mean_latency_ms=mean_lat,
+                    latency_p95_ms=p95_lat,
+                    summary_metrics=summary_metrics_dict,
+                )
+            )
+            update_res = await self.db.execute(update_complete_stmt)
             await self.db.commit()
+
+            if update_res.rowcount == 0:
+                eval_run = await self.db.get(EvalRun, run_id)
+                logger.warning(
+                    f"Run {run_id} was not in RUNNING status when completing (current: {eval_run.status if eval_run else 'None'}). "
+                    f"Preserving existing terminal status."
+                )
+                return eval_run
+
             await self.db.refresh(eval_run)
 
             logger.info(
@@ -525,10 +622,37 @@ class EvalRunner:
             except Exception:
                 pass
 
+            # If the run was already marked CANCELLED, do not overwrite status with FAILED
+            is_cancelled_now = False
+            try:
+                is_cancelled_now = await self._is_run_cancelled(run_id)
+            except Exception:
+                if self.is_cancelled and self.is_cancelled(run_id):
+                    is_cancelled_now = True
+
+            if is_cancelled_now:
+                logger.info(f"Evaluation run {run_id} was cancelled during execution; preserving CANCELLED status.")
+                try:
+                    eval_run = await self.db.get(EvalRun, run_id)
+                    if eval_run is not None:
+                        eval_run.status = "CANCELLED"
+                        eval_run.completed_at = datetime.now(timezone.utc)
+                        if not eval_run.error_message:
+                            eval_run.error_message = "Evaluation run cancelled by user."
+                        eval_run.progress_current = len(results)
+                        await self.db.commit()
+                        return eval_run
+                except Exception as cancel_exc:
+                    logger.error(f"Failed to refresh cancelled run {run_id}: {cancel_exc}")
+                return eval_run
+
             try:
                 update_stmt = (
                     update(EvalRun)
-                    .where(EvalRun.id == run_id)
+                    .where(
+                        EvalRun.id == run_id,
+                        EvalRun.status.in_(["PENDING", "RUNNING"]),
+                    )
                     .values(
                         status="FAILED",
                         completed_at=datetime.now(timezone.utc),

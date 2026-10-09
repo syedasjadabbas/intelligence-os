@@ -45,6 +45,34 @@ BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "eval" / "benchmarks"
 # In-memory tracking of currently executing/pending evaluation run IDs in this process.
 # Prevents false positive failure marking of active runs during orphaned run recovery checks.
 _active_run_ids: set[uuid.UUID] = set()
+_cancelled_run_ids: set[uuid.UUID] = set()
+
+
+def is_run_cancelled(run_id: uuid.UUID) -> bool:
+    """Checks whether an evaluation run has received an in-memory cancellation signal."""
+    return run_id in _cancelled_run_ids
+
+
+def get_run_last_activity_at(run: EvalRun) -> datetime:
+    """
+    Extracts the most recent persisted activity timestamp for an evaluation run.
+    Prefers persisted heartbeat in summary_metrics['last_heartbeat_at'], falling
+    back to started_at or created_at. Always returns a timezone-aware UTC datetime.
+    """
+    if run.summary_metrics and isinstance(run.summary_metrics, dict):
+        hb_str = run.summary_metrics.get("last_heartbeat_at")
+        if hb_str:
+            try:
+                dt = datetime.fromisoformat(hb_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                pass
+    dt = run.started_at or run.created_at or datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _extract_judge_type(run: EvalRun) -> str:
@@ -1002,41 +1030,230 @@ class EvaluationService:
         return _to_run_detail(eval_run)
 
     @staticmethod
-    async def recover_orphaned_runs(session_factory=None) -> int:
+    async def cancel_run(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        run_id: uuid.UUID,
+    ) -> EvaluationRunDetail:
         """
-        Recovers evaluation runs left in PENDING or RUNNING status after a server restart.
-        Ensures that runs currently actively executing in this process (_active_run_ids)
-        are NOT falsely marked as failed.
+        Cancels an evaluation run currently in PENDING or RUNNING status.
+        Uses a concurrency-safe conditional database update to ensure that
+        already COMPLETED, FAILED, or CANCELLED runs are preserved and cannot be overwritten.
+        """
+        stmt = select(EvalRun).where(EvalRun.id == run_id, EvalRun.org_id == org_id)
+        res = await db.execute(stmt)
+        run = res.scalar_one_or_none()
+        if not run:
+            raise LookupError(f"Evaluation run {run_id} was not found.")
+
+        if run.status in ["COMPLETED", "FAILED", "CANCELLED"]:
+            raise ValueError(
+                f"Cannot cancel evaluation run with status '{run.status}'. "
+                f"Only PENDING or RUNNING runs can be cancelled."
+            )
+
+        _cancelled_run_ids.add(run_id)
+
+        now = datetime.now(timezone.utc)
+        metrics = dict(run.summary_metrics or {})
+        metrics["cancelled"] = True
+        metrics["cancelled_at"] = now.isoformat()
+        metrics["processed_cases_at_cancellation"] = run.progress_current
+
+        update_stmt = (
+            update(EvalRun)
+            .where(
+                EvalRun.id == run_id,
+                EvalRun.org_id == org_id,
+                EvalRun.status.in_(["PENDING", "RUNNING"]),
+            )
+            .values(
+                status="CANCELLED",
+                completed_at=now,
+                error_message="Evaluation run cancelled by user.",
+                summary_metrics=metrics,
+            )
+        )
+        update_res = await db.execute(update_stmt)
+        await db.commit()
+
+        if update_res.rowcount == 0:
+            await db.refresh(run)
+            raise ValueError(
+                f"Cannot cancel evaluation run with status '{run.status}'. "
+                f"Only PENDING or RUNNING runs can be cancelled."
+            )
+
+        await db.refresh(run)
+        logger.info(f"Cancelled evaluation run {run_id} for org {org_id}.")
+        return _to_run_detail(run)
+
+    @staticmethod
+    async def recover_run(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        run_id: uuid.UUID,
+        stale_threshold_seconds: int = 1800,
+    ) -> EvaluationRunDetail:
+        """
+        Recovers a specific interrupted or orphaned evaluation run.
+        Uses persisted activity/heartbeat timestamps and a concurrency-safe conditional update.
+        If the run had recent activity within the threshold, raises a ValueError.
+        """
+        stmt = select(EvalRun).where(EvalRun.id == run_id, EvalRun.org_id == org_id)
+        res = await db.execute(stmt)
+        run = res.scalar_one_or_none()
+        if not run:
+            raise LookupError(f"Evaluation run {run_id} was not found.")
+
+        if run.status not in ["PENDING", "RUNNING"]:
+            raise ValueError(
+                f"Run {run_id} is already in terminal status '{run.status}'. "
+                f"Only PENDING or RUNNING runs can be recovered."
+            )
+
+        now = datetime.now(timezone.utc)
+        last_activity = get_run_last_activity_at(run)
+        age_seconds = (now - last_activity).total_seconds()
+
+        # If run had activity within threshold, it is actively executing (in this or another worker)
+        if age_seconds < stale_threshold_seconds:
+            raise ValueError(
+                f"Evaluation run is active (last activity {int(age_seconds)}s ago, threshold {stale_threshold_seconds}s). "
+                f"Use cancellation to abort."
+            )
+
+        if run.status == "PENDING":
+            reason = f"Evaluation run timed out after {int(age_seconds // 60)} minutes of inactivity; interrupted before execution started (server restart, process termination, or timeout)."
+        else:
+            reason = f"Evaluation run timed out after {int(age_seconds // 60)} minutes of inactivity; interrupted after processing {run.progress_current}/{run.total_test_cases} cases (server restart, process termination, or timeout)."
+        metrics = dict(run.summary_metrics or {})
+        metrics["interrupted"] = True
+        metrics["recovered_at"] = now.isoformat()
+        metrics["processed_cases_before_interruption"] = run.progress_current
+
+        update_stmt = (
+            update(EvalRun)
+            .where(
+                EvalRun.id == run_id,
+                EvalRun.org_id == org_id,
+                EvalRun.status.in_(["PENDING", "RUNNING"]),
+            )
+            .values(
+                status="FAILED",
+                completed_at=now,
+                error_message=reason,
+                summary_metrics=metrics,
+            )
+        )
+        update_res = await db.execute(update_stmt)
+        await db.commit()
+
+        if update_res.rowcount == 0:
+            await db.refresh(run)
+            raise ValueError(
+                f"Run {run_id} transitioned to terminal status '{run.status}' during recovery."
+            )
+
+        _active_run_ids.discard(run_id)
+        _cancelled_run_ids.discard(run_id)
+
+        await db.refresh(run)
+        logger.info(f"Recovered evaluation run {run_id}: {reason}")
+        return _to_run_detail(run)
+
+    @staticmethod
+    async def recover_stale_or_orphaned_runs(
+        db: Optional[AsyncSession] = None,
+        org_id: Optional[uuid.UUID] = None,
+        stale_threshold_seconds: int = 1800,
+        session_factory=None,
+    ) -> List[EvaluationRunDetail]:
+        """
+        Recovers evaluation runs left in PENDING or RUNNING status:
+        Uses persisted activity/heartbeat timestamps and a concurrency-safe conditional update.
+        Never marks a run as failed solely because its ID is absent from _active_run_ids,
+        protecting actively executing runs in other worker processes.
         """
         from app.core.database import get_session_factory
         session_maker = session_factory or get_session_factory()
 
-        async with session_maker() as db:
-            stmt = select(EvalRun).where(EvalRun.status.in_(["PENDING", "RUNNING"]))
-            res = await db.execute(stmt)
+        async def _do_recovery(session: AsyncSession) -> List[EvaluationRunDetail]:
+            query = select(EvalRun).where(EvalRun.status.in_(["PENDING", "RUNNING"]))
+            if org_id is not None:
+                query = query.where(EvalRun.org_id == org_id)
+
+            res = await session.execute(query)
             candidate_runs = res.scalars().all()
 
-            recovered_count = 0
+            recovered: List[EvaluationRunDetail] = []
+            now = datetime.now(timezone.utc)
+
             for run in candidate_runs:
-                # Do not falsely mark an actively running task as failed
-                if run.id in _active_run_ids:
+                last_activity = get_run_last_activity_at(run)
+                age_seconds = (now - last_activity).total_seconds()
+
+                # Multi-worker safety: Never classify as orphaned if recent activity occurred!
+                # Even if not in this process's _active_run_ids, another worker may be executing it.
+                if age_seconds < stale_threshold_seconds:
                     continue
 
-                run.status = "FAILED"
-                run.completed_at = datetime.now(timezone.utc)
-                run.error_message = (
-                    "Evaluation run was interrupted by a server restart or process termination."
+                if run.status == "PENDING":
+                    reason = f"Evaluation run timed out after {int(age_seconds // 60)} minutes of inactivity; interrupted before execution started (server restart, process termination, or timeout)."
+                else:
+                    reason = f"Evaluation run timed out after {int(age_seconds // 60)} minutes of inactivity; interrupted after processing {run.progress_current}/{run.total_test_cases} cases (server restart, process termination, or timeout)."
+
+                metrics = dict(run.summary_metrics or {})
+                metrics["interrupted"] = True
+                metrics["recovered_at"] = now.isoformat()
+                metrics["processed_cases_before_interruption"] = run.progress_current
+
+                stmt = (
+                    update(EvalRun)
+                    .where(
+                        EvalRun.id == run.id,
+                        EvalRun.status.in_(["PENDING", "RUNNING"]),
+                    )
                 )
-                if not run.summary_metrics:
-                    run.summary_metrics = {}
-                run.summary_metrics["error"] = "Server restart interrupted evaluation run"
-                recovered_count += 1
+                if org_id is not None:
+                    stmt = stmt.where(EvalRun.org_id == org_id)
 
-            if recovered_count > 0:
-                await db.commit()
-                logger.info(f"Recovered {recovered_count} orphaned evaluation run(s) from previous execution.")
+                stmt = stmt.values(
+                    status="FAILED",
+                    completed_at=now,
+                    error_message=reason,
+                    summary_metrics=metrics,
+                )
+                update_res = await session.execute(stmt)
+                if update_res.rowcount > 0:
+                    _active_run_ids.discard(run.id)
+                    _cancelled_run_ids.discard(run.id)
+                    run.status = "FAILED"
+                    run.completed_at = now
+                    run.error_message = reason
+                    run.summary_metrics = metrics
+                    recovered.append(_to_run_detail(run))
 
-            return recovered_count
+            if recovered:
+                await session.commit()
+                logger.info(f"Recovered {len(recovered)} orphaned or stale evaluation run(s).")
+
+            return recovered
+
+        if db is not None:
+            return await _do_recovery(db)
+        else:
+            async with session_maker() as session:
+                return await _do_recovery(session)
+
+    @staticmethod
+    async def recover_orphaned_runs(session_factory=None, stale_threshold_seconds: int = 1800) -> int:
+        """Backward-compatible wrapper for startup orphaned run recovery."""
+        recovered = await EvaluationService.recover_stale_or_orphaned_runs(
+            session_factory=session_factory,
+            stale_threshold_seconds=stale_threshold_seconds,
+        )
+        return len(recovered)
 
     @staticmethod
     async def mark_in_flight_runs_as_interrupted(session_factory=None) -> int:
@@ -1069,6 +1286,7 @@ class EvaluationService:
             if in_flight:
                 await db.commit()
             _active_run_ids.clear()
+            _cancelled_run_ids.clear()
             return len(in_flight)
 
 
@@ -1085,13 +1303,19 @@ async def process_evaluation_run_background(
     """
     Background worker task for asynchronous evaluation runs.
     Uses its own dedicated database session from session_factory.
-    Updates EvalRun status from PENDING -> RUNNING -> COMPLETED (or FAILED).
-    Tracks incremental progress_current and records error_message on failure.
+    Updates EvalRun status from PENDING -> RUNNING -> COMPLETED (or FAILED / CANCELLED).
+    Tracks incremental progress_current, supports cancellation, and records diagnostics.
     """
     from app.core.database import get_session_factory
     from sqlalchemy import update
 
     _active_run_ids.add(run_id)
+
+    # Check if run was already cancelled before worker began
+    if is_run_cancelled(run_id):
+        logger.info(f"Background evaluation run {run_id} cancelled before worker start.")
+        _active_run_ids.discard(run_id)
+        return
 
     session_maker = session_factory or get_session_factory()
 
@@ -1109,6 +1333,13 @@ async def process_evaluation_run_background(
 
     try:
         async with session_maker() as db:
+            # Re-verify DB status in case cancelled while queueing
+            run_check = await db.execute(select(EvalRun.status).where(EvalRun.id == run_id))
+            status_val = run_check.scalar_one_or_none()
+            if status_val == "CANCELLED" or is_run_cancelled(run_id):
+                logger.info(f"Evaluation run {run_id} is in CANCELLED status. Skipping worker execution.")
+                return
+
             try:
                 benchmark_input = await EvaluationService.load_benchmark_dataset(
                     db=db,
@@ -1121,6 +1352,7 @@ async def process_evaluation_run_background(
                     org_id=org_id,
                     judge=judge,
                     offline=is_offline,
+                    is_cancelled=is_run_cancelled,
                 )
                 logger.info(
                     f"Starting background evaluation run {run_id} for org {org_id} "
@@ -1132,16 +1364,27 @@ async def process_evaluation_run_background(
                     limit=bounded_limit,
                     existing_run_id=run_id,
                 )
-                logger.info(f"Background evaluation run {run_id} completed successfully.")
+                logger.info(f"Background evaluation run {run_id} finished execution.")
             except Exception as exc:
                 logger.error(
-                    f"Background evaluation run {run_id} encountered fatal exception: {exc}",
+                    f"Background evaluation run {run_id} encountered exception: {exc}",
                     exc_info=True,
                 )
+                # If run was cancelled, do not overwrite status with FAILED
+                check_stmt = select(EvalRun.status).where(EvalRun.id == run_id)
+                res = await db.execute(check_stmt)
+                current_status = res.scalar_one_or_none()
+                if current_status == "CANCELLED" or is_run_cancelled(run_id):
+                    logger.info(f"Run {run_id} was cancelled; skipping FAILED status update.")
+                    return
+
                 try:
                     update_stmt = (
                         update(EvalRun)
-                        .where(EvalRun.id == run_id)
+                        .where(
+                            EvalRun.id == run_id,
+                            EvalRun.status.in_(["PENDING", "RUNNING"]),
+                        )
                         .values(
                             status="FAILED",
                             completed_at=datetime.now(timezone.utc),
@@ -1155,6 +1398,7 @@ async def process_evaluation_run_background(
                     logger.error(f"Failed to record FAILED status for run {run_id}: {commit_exc}")
     finally:
         _active_run_ids.discard(run_id)
+        _cancelled_run_ids.discard(run_id)
 
 
 evaluation_service = EvaluationService()

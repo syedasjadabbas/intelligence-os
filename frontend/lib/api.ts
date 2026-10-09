@@ -505,6 +505,21 @@ class ApiClient {
       timeoutMs: 20000,
     });
   }
+
+  // --- Evaluation Cancellation & Recovery (Phase 5C) ---
+  async cancelEvaluation(runId: string): Promise<EvaluationRunDetail> {
+    return this.request<EvaluationRunDetail>(`/evaluations/${runId}/cancel`, {
+      method: "POST",
+      timeoutMs: 15000,
+    });
+  }
+
+  async recoverEvaluation(runId: string): Promise<EvaluationRunDetail> {
+    return this.request<EvaluationRunDetail>(`/evaluations/${runId}/recover`, {
+      method: "POST",
+      timeoutMs: 15000,
+    });
+  }
 }
 
 // Evaluation Types (Phase 3 & Phase 5B)

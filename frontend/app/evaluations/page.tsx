@@ -33,6 +33,7 @@ import {
   TrendingDown,
   Info,
   X,
+  Ban,
 } from "lucide-react";
 
 export default function EvaluationsDashboardPage() {
@@ -58,6 +59,7 @@ export default function EvaluationsDashboardPage() {
   // Start Evaluation Modal state
   const [showRunModal, setShowRunModal] = useState(false);
   const [submittingRun, setSubmittingRun] = useState(false);
+  const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const [datasets, setDatasets] = useState<DatasetListItem[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
   const [runDataset, setRunDataset] = useState("golden_dataset");
@@ -186,6 +188,21 @@ export default function EvaluationsDashboardPage() {
       setRunError(err.message || "Failed to execute evaluation run.");
     } finally {
       setSubmittingRun(false);
+    }
+  };
+
+  // Cancel evaluation run (Phase 5C)
+  const handleCancelRun = async (runId: string) => {
+    if (!isAdmin) return;
+    if (!confirm("Are you sure you want to cancel this evaluation run?")) return;
+    setCancellingRunId(runId);
+    try {
+      await api.cancelEvaluation(runId);
+      await fetchRuns(true);
+    } catch (err: any) {
+      setError(err.message || "Failed to cancel evaluation run.");
+    } finally {
+      setCancellingRunId(null);
     }
   };
 
@@ -479,6 +496,8 @@ export default function EvaluationsDashboardPage() {
                   <option value="all" className="bg-slate-900">All Statuses</option>
                   <option value="COMPLETED" className="bg-slate-900">Completed</option>
                   <option value="RUNNING" className="bg-slate-900">Running</option>
+                  <option value="PENDING" className="bg-slate-900">Queued</option>
+                  <option value="CANCELLED" className="bg-slate-900">Cancelled</option>
                   <option value="FAILED" className="bg-slate-900">Failed</option>
                 </select>
               </div>
@@ -647,6 +666,24 @@ export default function EvaluationsDashboardPage() {
                               <Clock className="w-3 h-3" />
                               QUEUED
                             </span>
+                          ) : r.status === "CANCELLED" ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700"
+                                title={r.error_message || undefined}
+                              >
+                                <Ban className="w-3 h-3 text-slate-400" />
+                                CANCELLED
+                              </span>
+                              {r.error_message && (
+                                <span
+                                  className="text-[10px] text-slate-400/80 truncate max-w-[130px]"
+                                  title={r.error_message}
+                                >
+                                  {r.error_message}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <div className="flex flex-col gap-0.5">
                               <span
@@ -668,13 +705,30 @@ export default function EvaluationsDashboardPage() {
                           )}
                         </td>
                         <td className="p-3 text-right">
-                          <Link
-                            href={`/evaluations/${r.id}`}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/60 font-medium transition-colors"
-                          >
-                            <span>Inspect</span>
-                            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                          </Link>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isAdmin && (r.status === "PENDING" || r.status === "RUNNING") && (
+                              <button
+                                onClick={() => handleCancelRun(r.id)}
+                                disabled={cancellingRunId === r.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 font-medium transition-colors cursor-pointer text-[11px]"
+                                title="Cancel this evaluation run"
+                              >
+                                {cancellingRunId === r.id ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Ban className="w-3 h-3" />
+                                )}
+                                <span>Cancel</span>
+                              </button>
+                            )}
+                            <Link
+                              href={`/evaluations/${r.id}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/60 font-medium transition-colors"
+                            >
+                              <span>Inspect</span>
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );
