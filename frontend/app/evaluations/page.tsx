@@ -8,6 +8,7 @@ import {
   EvaluationRunListItem,
   EvaluationComparisonResponse,
   MetricDelta,
+  DatasetListItem,
 } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import {
@@ -57,6 +58,8 @@ export default function EvaluationsDashboardPage() {
   // Start Evaluation Modal state
   const [showRunModal, setShowRunModal] = useState(false);
   const [submittingRun, setSubmittingRun] = useState(false);
+  const [datasets, setDatasets] = useState<DatasetListItem[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
   const [runDataset, setRunDataset] = useState("golden_dataset");
   const [runJudgeType, setRunJudgeType] = useState<"deterministic" | "llm">(
     "deterministic"
@@ -64,6 +67,16 @@ export default function EvaluationsDashboardPage() {
   const [runLimit, setRunLimit] = useState<number>(50);
   const [runOffline, setRunOffline] = useState(true);
   const [runError, setRunError] = useState<string | null>(null);
+
+  // Load custom datasets
+  const fetchDatasets = useCallback(async () => {
+    try {
+      const res = await api.listDatasets({ limit: 100 });
+      setDatasets(res.items || []);
+    } catch (err: any) {
+      console.error("Failed to load datasets:", err);
+    }
+  }, []);
 
   // Load runs
   const fetchRuns = useCallback(async (silent: boolean = false) => {
@@ -86,8 +99,9 @@ export default function EvaluationsDashboardPage() {
   useEffect(() => {
     if (user) {
       fetchRuns();
+      fetchDatasets();
     }
-  }, [user, fetchRuns]);
+  }, [user, fetchRuns, fetchDatasets]);
 
   // Active runs auto-polling
   useEffect(() => {
@@ -156,8 +170,12 @@ export default function EvaluationsDashboardPage() {
     setSubmittingRun(true);
     setRunError(null);
     try {
+      const isCustom = Boolean(selectedDatasetId && selectedDatasetId !== "golden_dataset");
+      const customDs = isCustom ? datasets.find((d) => d.id === selectedDatasetId) : null;
+
       await api.createEvaluation({
-        dataset_name: runDataset,
+        dataset_name: isCustom && customDs ? customDs.name : runDataset,
+        dataset_id: isCustom ? selectedDatasetId : undefined,
         judge_type: runJudgeType,
         limit: runLimit > 0 ? runLimit : undefined,
         offline: runJudgeType === "deterministic" ? runOffline : false,
@@ -253,9 +271,19 @@ export default function EvaluationsDashboardPage() {
             </button>
           )}
 
+          <Link
+            href="/evaluations/datasets"
+            className="py-1.5 px-3 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700/60 cursor-pointer"
+            title="Manage custom datasets and test cases"
+          >
+            <Layers className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Datasets</span>
+          </Link>
+
           <button
             onClick={() => {
               setRunError(null);
+              fetchDatasets();
               setShowRunModal(true);
             }}
             className="py-1.5 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
@@ -518,7 +546,15 @@ export default function EvaluationsDashboardPage() {
                           {formatDate(r.created_at)}
                         </td>
                         <td className="p-3 text-slate-300 font-medium">
-                          {r.dataset_name} <span className="text-[10px] text-slate-500">v{r.dataset_version}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span>{r.dataset_name}</span>
+                            <span className="text-[10px] text-slate-500">v{r.dataset_version}</span>
+                            {r.dataset_id ? (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold uppercase">
+                                Custom
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="p-3 text-slate-300">
                           {r.status === "COMPLETED" ? (
@@ -688,17 +724,43 @@ export default function EvaluationsDashboardPage() {
             <form onSubmit={handleStartRun} className="space-y-4">
               {/* Dataset Selection */}
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Benchmark Dataset
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-slate-300">
+                    Benchmark Dataset
+                  </label>
+                  <Link
+                    href="/evaluations/datasets"
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1"
+                  >
+                    <span>Manage datasets &rarr;</span>
+                  </Link>
+                </div>
                 <select
-                  value={runDataset}
-                  onChange={(e) => setRunDataset(e.target.value)}
+                  value={selectedDatasetId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedDatasetId(val);
+                    if (!val || val === "golden_dataset") {
+                      setRunDataset("golden_dataset");
+                      setRunLimit(50);
+                    } else {
+                      const found = datasets.find((d) => d.id === val);
+                      if (found) {
+                        setRunDataset(found.name);
+                        setRunLimit(Math.max(1, Math.min(found.test_case_count || 1, 50)));
+                      }
+                    }
+                  }}
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                 >
                   <option value="golden_dataset">
-                    golden_dataset.json (50 cases - Multi-Hop, Coreference, Refusal, Citations)
+                    golden_dataset.json (Built-in 50 cases - Multi-Hop, Coreference, Refusal)
                   </option>
+                  {datasets.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} v{d.version} ({d.test_case_count} cases) {d.description ? `— ${d.description}` : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -758,40 +820,55 @@ export default function EvaluationsDashboardPage() {
               )}
 
               {/* Limit Slider / Presets */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-slate-300">
-                    Test Case Limit
-                  </label>
-                  <span className="text-xs font-mono font-semibold text-indigo-400">
-                    {runLimit} cases
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 mb-2">
-                  {[5, 10, 25, 50].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setRunLimit(preset)}
-                      className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
-                        runLimit === preset
-                          ? "bg-indigo-600 text-white border-indigo-500"
-                          : "bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white"
-                      }`}
-                    >
-                      {preset === 50 ? "All (50)" : preset}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="50"
-                  value={runLimit}
-                  onChange={(e) => setRunLimit(Number(e.target.value))}
-                  className="w-full accent-indigo-500 cursor-pointer"
-                />
-              </div>
+              {(() => {
+                const isCustom = Boolean(selectedDatasetId && selectedDatasetId !== "golden_dataset");
+                const customDs = isCustom ? datasets.find((d) => d.id === selectedDatasetId) : null;
+                const maxAvailable = isCustom && customDs ? Math.max(1, customDs.test_case_count) : 50;
+                const presetList = [5, 10, 25, 50].filter((p) => p <= maxAvailable);
+                if (!presetList.includes(maxAvailable)) {
+                  presetList.push(maxAvailable);
+                  presetList.sort((a, b) => a - b);
+                }
+
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-medium text-slate-300">
+                        Test Case Limit
+                      </label>
+                      <span className="text-xs font-mono font-semibold text-indigo-400">
+                        {runLimit} of {maxAvailable} cases
+                      </span>
+                    </div>
+                    {presetList.length > 1 && (
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        {presetList.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setRunLimit(preset)}
+                            className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                              runLimit === preset
+                                ? "bg-indigo-600 text-white border-indigo-500"
+                                : "bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white"
+                            }`}
+                          >
+                            {preset === maxAvailable ? `All (${maxAvailable})` : preset}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <input
+                      type="range"
+                      min="1"
+                      max={maxAvailable}
+                      value={Math.min(runLimit, maxAvailable)}
+                      onChange={(e) => setRunLimit(Number(e.target.value))}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Offline mode toggle for deterministic */}
               {runJudgeType === "deterministic" && (

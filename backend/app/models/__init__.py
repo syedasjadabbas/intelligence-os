@@ -4,7 +4,7 @@ from app.models.organization import Organization
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentChunk, DocumentStatus
 from app.models.conversation import Conversation, Message
-from app.models.evaluation import EvalRun, EvalRunResult
+from app.models.evaluation import EvalDataset, EvalRun, EvalRunResult, EvalTestCase
 
 __all__ = [
     "Base",
@@ -16,6 +16,8 @@ __all__ = [
     "DocumentStatus",
     "Conversation",
     "Message",
+    "EvalDataset",
+    "EvalTestCase",
     "EvalRun",
     "EvalRunResult",
 ]

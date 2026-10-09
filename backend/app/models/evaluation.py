@@ -11,6 +11,7 @@ from sqlalchemy import (
     JSON,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -21,6 +22,165 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
+
+
+class EvalDataset(Base):
+    """
+    Database-backed benchmark evaluation dataset scoped to an enterprise tenant organization.
+    Contains test cases used to evaluate retrieval and generation quality.
+    """
+
+    __tablename__ = "eval_datasets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        index=True,
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    version: Mapped[str] = mapped_column(
+        String(50),
+        default="1.0.0",
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    test_cases: Mapped[List["EvalTestCase"]] = relationship(
+        "EvalTestCase",
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        order_by="EvalTestCase.created_at",
+    )
+    runs: Mapped[List["EvalRun"]] = relationship(
+        "EvalRun",
+        back_populates="dataset",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_eval_datasets_org_name"),
+    )
+
+
+class EvalTestCase(Base):
+    """
+    Individual benchmark test case within a dataset.
+    Defines evaluation query, expected behavior, ground truth answer, key facts,
+    and evidence anchors.
+    """
+
+    __tablename__ = "eval_test_cases"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        index=True,
+    )
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("eval_datasets.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    case_identifier: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    query: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+    query_type: Mapped[str] = mapped_column(
+        String(50),
+        default="single_hop",
+        nullable=False,
+    )
+    expected_behavior: Mapped[str] = mapped_column(
+        String(20),
+        default="answer",
+        nullable=False,
+    )
+    ground_truth_answer: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    key_facts: Mapped[List[str]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        default=list,
+        nullable=False,
+    )
+    ground_truth_evidence: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        default=list,
+        nullable=False,
+    )
+    conversation_history: Mapped[List[Dict[str, str]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        default=list,
+        nullable=False,
+    )
+    metadata_json: Mapped[Dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        default=dict,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    dataset: Mapped["EvalDataset"] = relationship(
+        "EvalDataset",
+        back_populates="test_cases",
+    )
+
+    __table_args__ = (
+        Index("ix_eval_test_cases_dataset_case", "dataset_id", "case_identifier"),
+    )
 
 
 class EvalRun(Base):
@@ -42,6 +202,12 @@ class EvalRun(Base):
         ForeignKey("organizations.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
+    )
+    dataset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("eval_datasets.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
     )
     dataset_name: Mapped[str] = mapped_column(
         String(255),
@@ -199,6 +365,10 @@ class EvalRun(Base):
     # Relationships
     organization: Mapped["Organization"] = relationship(
         "Organization",
+    )
+    dataset: Mapped[Optional["EvalDataset"]] = relationship(
+        "EvalDataset",
+        back_populates="runs",
     )
     results: Mapped[List["EvalRunResult"]] = relationship(
         "EvalRunResult",

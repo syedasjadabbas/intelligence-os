@@ -41,6 +41,104 @@ class BenchmarkDataset(BaseModel):
     test_cases: List[BenchmarkTestCase] = Field(default_factory=list)
 
 
+# --- Phase 5B: Database-backed Dataset & Test Case Schemas ---
+
+class TestCaseCreate(BaseModel):
+    """Payload to create an evaluation test case in a dataset."""
+    case_identifier: Optional[str] = Field(default=None, max_length=100, description="Optional custom identifier (e.g. TC-001). Auto-generated if omitted.")
+    query: str = Field(min_length=1, description="Evaluation user query.")
+    query_type: str = Field(default="single_hop", max_length=50, description="Category: single_hop, multi_hop, coreference_followup, retrieval_hard, multi_document, semantic_search, citation_sensitive, reranking_test, unanswerable.")
+    expected_behavior: str = Field(default="answer", max_length=20, description="Expected system behavior: 'answer' or 'refuse'.")
+    ground_truth_answer: Optional[str] = Field(default=None, description="Ideal ground-truth factual answer.")
+    key_facts: List[str] = Field(default_factory=list, description="Key atomic facts required in answer.")
+    ground_truth_evidence: List[EvidenceAnchor] = Field(default_factory=list, description="Semantic anchors for evidence matching.")
+    conversation_history: List[Dict[str, str]] = Field(default_factory=list, description="Optional multi-turn conversation context.")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary extra metadata tags.")
+
+
+class TestCaseUpdate(BaseModel):
+    """Payload to update an existing evaluation test case."""
+    case_identifier: Optional[str] = Field(default=None, max_length=100)
+    query: Optional[str] = Field(default=None, min_length=1)
+    query_type: Optional[str] = Field(default=None, max_length=50)
+    expected_behavior: Optional[str] = Field(default=None, max_length=20)
+    ground_truth_answer: Optional[str] = None
+    key_facts: Optional[List[str]] = None
+    ground_truth_evidence: Optional[List[EvidenceAnchor]] = None
+    conversation_history: Optional[List[Dict[str, str]]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class TestCaseDetail(BaseModel):
+    """Full detail of a persisted test case."""
+    id: uuid.UUID
+    dataset_id: uuid.UUID
+    org_id: uuid.UUID
+    case_identifier: str
+    query: str
+    query_type: str
+    expected_behavior: str
+    ground_truth_answer: Optional[str] = None
+    key_facts: List[str] = Field(default_factory=list)
+    ground_truth_evidence: List[EvidenceAnchor] = Field(default_factory=list)
+    conversation_history: List[Dict[str, str]] = Field(default_factory=list)
+    metadata_json: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DatasetCreate(BaseModel):
+    """Payload to create a new evaluation dataset."""
+    name: str = Field(min_length=1, max_length=255, description="Unique name of dataset for tenant.")
+    description: Optional[str] = Field(default=None, description="Optional description of the dataset.")
+    version: str = Field(default="1.0.0", max_length=50, description="Dataset version.")
+    test_cases: List[TestCaseCreate] = Field(default_factory=list, description="Optional initial test cases.")
+
+
+class DatasetUpdate(BaseModel):
+    """Payload to update dataset metadata."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    version: Optional[str] = Field(default=None, max_length=50)
+
+
+class DatasetListItem(BaseModel):
+    """Compact summary of a dataset for list views."""
+    id: uuid.UUID
+    org_id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    version: str
+    test_case_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DatasetDetail(BaseModel):
+    """Complete dataset details with all test cases."""
+    id: uuid.UUID
+    org_id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    version: str
+    test_case_count: int = 0
+    test_cases: List[TestCaseDetail] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DatasetsPage(BaseModel):
+    """Paginated or listed datasets response."""
+    items: List[DatasetListItem]
+    total: int
+
+
 # --- Metrics Schemas ---
 
 class RetrievalMetrics(BaseModel):
@@ -149,6 +247,7 @@ class EvaluationRunListItem(BaseModel):
     """Compact summary schema for evaluation history lists and tables."""
     id: uuid.UUID
     org_id: uuid.UUID
+    dataset_id: Optional[uuid.UUID] = None
     dataset_name: str
     dataset_version: str
     status: str
@@ -184,6 +283,7 @@ class EvaluationRunDetail(BaseModel):
     """Detailed evaluation run payload including configuration snapshot and summary metrics."""
     id: uuid.UUID
     org_id: uuid.UUID
+    dataset_id: Optional[uuid.UUID] = None
     dataset_name: str
     dataset_version: str
     status: str
@@ -232,6 +332,7 @@ class EvaluationRunsPage(BaseModel):
 
 class EvaluationRunCreate(BaseModel):
     """Request payload to start an evaluation run."""
+    dataset_id: Optional[uuid.UUID] = Field(default=None, description="Optional ID of custom database dataset.")
     dataset_name: str = Field(default="golden_dataset", description="Name of benchmark dataset to evaluate.")
     judge_type: str = Field(default="deterministic", description="'deterministic' or 'llm'")
     limit: Optional[int] = Field(default=50, ge=1, le=50, description="Maximum test cases to evaluate (hard server cap: 50).")

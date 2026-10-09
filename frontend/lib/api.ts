@@ -446,12 +446,153 @@ class ApiClient {
       { timeoutMs: 20000 }
     );
   }
+
+  // --- Evaluation Datasets (Phase 5B) ---
+  async listDatasets(options?: { skip?: number; limit?: number }): Promise<DatasetsPage> {
+    const params = new URLSearchParams();
+    if (options?.skip !== undefined) params.append("skip", options.skip.toString());
+    if (options?.limit !== undefined) params.append("limit", options.limit.toString());
+    const queryStr = params.toString() ? `?${params.toString()}` : "";
+    return this.request<DatasetsPage>(`/evaluations/datasets${queryStr}`, { timeoutMs: 15000 });
+  }
+
+  async getDataset(datasetId: string): Promise<DatasetDetail> {
+    return this.request<DatasetDetail>(`/evaluations/datasets/${datasetId}`, { timeoutMs: 15000 });
+  }
+
+  async createDataset(payload: DatasetCreate): Promise<DatasetDetail> {
+    return this.request<DatasetDetail>("/evaluations/datasets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 20000,
+    });
+  }
+
+  async updateDataset(datasetId: string, payload: DatasetUpdate): Promise<DatasetDetail> {
+    return this.request<DatasetDetail>(`/evaluations/datasets/${datasetId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      timeoutMs: 20000,
+    });
+  }
+
+  async deleteDataset(datasetId: string): Promise<void> {
+    return this.request<void>(`/evaluations/datasets/${datasetId}`, {
+      method: "DELETE",
+      timeoutMs: 20000,
+    });
+  }
+
+  async addTestCase(datasetId: string, payload: TestCaseCreate): Promise<TestCaseDetail> {
+    return this.request<TestCaseDetail>(`/evaluations/datasets/${datasetId}/cases`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 20000,
+    });
+  }
+
+  async updateTestCase(datasetId: string, caseId: string, payload: TestCaseUpdate): Promise<TestCaseDetail> {
+    return this.request<TestCaseDetail>(`/evaluations/datasets/${datasetId}/cases/${caseId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      timeoutMs: 20000,
+    });
+  }
+
+  async deleteTestCase(datasetId: string, caseId: string): Promise<void> {
+    return this.request<void>(`/evaluations/datasets/${datasetId}/cases/${caseId}`, {
+      method: "DELETE",
+      timeoutMs: 20000,
+    });
+  }
 }
 
-// Evaluation Types (Phase 3)
+// Evaluation Types (Phase 3 & Phase 5B)
+export interface EvidenceAnchor {
+  document_title: string;
+  page_number?: number | null;
+  section_heading?: string | null;
+  content_anchors: string[];
+}
+
+export interface TestCaseCreate {
+  case_identifier?: string;
+  query: string;
+  query_type?: string;
+  expected_behavior?: string;
+  ground_truth_answer?: string | null;
+  key_facts?: string[];
+  ground_truth_evidence?: EvidenceAnchor[];
+  conversation_history?: Array<Record<string, string>>;
+  metadata?: Record<string, any>;
+}
+
+export interface TestCaseUpdate {
+  case_identifier?: string;
+  query?: string;
+  query_type?: string;
+  expected_behavior?: string;
+  ground_truth_answer?: string | null;
+  key_facts?: string[];
+  ground_truth_evidence?: EvidenceAnchor[];
+  conversation_history?: Array<Record<string, string>>;
+  metadata?: Record<string, any>;
+}
+
+export interface TestCaseDetail {
+  id: string;
+  dataset_id: string;
+  org_id: string;
+  case_identifier: string;
+  query: string;
+  query_type: string;
+  expected_behavior: string;
+  ground_truth_answer?: string | null;
+  key_facts: string[];
+  ground_truth_evidence: EvidenceAnchor[];
+  conversation_history: Array<Record<string, string>>;
+  metadata_json: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatasetCreate {
+  name: string;
+  description?: string | null;
+  version?: string;
+  test_cases?: TestCaseCreate[];
+}
+
+export interface DatasetUpdate {
+  name?: string;
+  description?: string | null;
+  version?: string;
+}
+
+export interface DatasetListItem {
+  id: string;
+  org_id: string;
+  name: string;
+  description?: string | null;
+  version: string;
+  test_case_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatasetDetail extends DatasetListItem {
+  test_cases: TestCaseDetail[];
+}
+
+export interface DatasetsPage {
+  items: DatasetListItem[];
+  total: number;
+}
+
 export interface EvaluationRunListItem {
   id: string;
   org_id: string;
+  dataset_id?: string | null;
   dataset_name: string;
   dataset_version: string;
   status: string;
@@ -499,6 +640,7 @@ export interface EvaluationRunsPage {
 }
 
 export interface EvaluationRunCreate {
+  dataset_id?: string | null;
   dataset_name?: string;
   judge_type?: "deterministic" | "llm" | string;
   limit?: number;
