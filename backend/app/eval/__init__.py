@@ -14,9 +14,6 @@ from app.eval.metrics import (
     detect_refusal,
     matches_evidence_anchor,
 )
-from app.eval.judges import BaseJudge, DeterministicJudge, JudgeResult
-from app.eval.runner import EvalRunner
-
 __all__ = [
     "compute_recall_at_k",
     "compute_mrr",
@@ -31,3 +28,13 @@ __all__ = [
     "JudgeResult",
     "EvalRunner",
 ]
+
+
+def __getattr__(name: str):
+    if name in ("BaseJudge", "DeterministicJudge", "JudgeResult", "LLMJudge"):
+        from app.eval import judges
+        return getattr(judges, name)
+    if name == "EvalRunner":
+        from app.eval.runner import EvalRunner
+        return EvalRunner
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

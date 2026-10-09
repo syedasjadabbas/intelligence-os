@@ -230,6 +230,7 @@ class EvalRunner:
                     query=effective_query,
                     candidates=retrieved_items,
                     top_k=5,
+                    offline=self.offline,
                 )
 
                 # C. Synthesize or generate answer

@@ -1,0 +1,57 @@
+name: RAG Evaluation CI Gate
+
+'on':
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+      - 'feat/**'
+
+jobs:
+  rag-quality-gate:
+    name: Deterministic Quality & Regression Gate
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Deterministic Benchmark & Regression Gate
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///ci_eval.db
+          DEBUG: "false"
+        run: |
+          python -m app.eval.cli \
+            --judge deterministic \
+            --offline \
+            --output-json eval-results.json \
+            --check-regression \
+            --db-url sqlite+aiosqlite:///ci_eval.db \
+            --output-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Evaluation Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-evaluation-results
+          path: backend/eval-results.json
+          retention-days: 14

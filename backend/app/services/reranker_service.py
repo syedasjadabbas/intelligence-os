@@ -143,20 +143,23 @@ class RerankerService:
             cohere_api_key if cohere_api_key is not None else settings.COHERE_API_KEY
         )
         self._cross_encoder = None
-        self._init_cross_encoder()
+        self._cross_encoder_initialized = False
 
-    def _init_cross_encoder(self):
-        """Attempts to load sentence-transformers CrossEncoder if available."""
-        try:
-            from sentence_transformers import CrossEncoder
+    def _get_cross_encoder(self):
+        """Attempts to load sentence-transformers CrossEncoder lazily if available."""
+        if not self._cross_encoder_initialized:
+            self._cross_encoder_initialized = True
+            try:
+                from sentence_transformers import CrossEncoder
 
-            self._cross_encoder = CrossEncoder(self.model_name)
-            logger.info(f"Loaded sentence-transformers CrossEncoder: {self.model_name}")
-        except Exception as exc:
-            logger.debug(
-                f"CrossEncoder model not loaded ({exc}). Using Cohere or deterministic reranker."
-            )
-            self._cross_encoder = None
+                self._cross_encoder = CrossEncoder(self.model_name)
+                logger.info(f"Loaded sentence-transformers CrossEncoder: {self.model_name}")
+            except Exception as exc:
+                logger.debug(
+                    f"CrossEncoder model not loaded ({exc}). Using Cohere or deterministic reranker."
+                )
+                self._cross_encoder = None
+        return self._cross_encoder
 
     async def _rerank_cohere(
         self, query: str, candidates: List[SearchResultItem], top_k: int
@@ -206,12 +209,13 @@ class RerankerService:
         self, query: str, candidates: List[SearchResultItem], top_k: int
     ) -> Optional[List[SearchResultItem]]:
         """Rerank candidates using loaded local CrossEncoder."""
-        if self._cross_encoder is None:
+        encoder = self._get_cross_encoder()
+        if encoder is None:
             return None
 
         try:
             pairs = [[query, c.content] for c in candidates]
-            scores = self._cross_encoder.predict(pairs)
+            scores = encoder.predict(pairs)
             for candidate, score in zip(candidates, scores):
                 candidate.rerank_score = round(float(score), 4)
 
@@ -254,6 +258,7 @@ class RerankerService:
         query: str,
         candidates: List[SearchResultItem],
         top_k: Optional[int] = None,
+        offline: bool = False,
     ) -> List[SearchResultItem]:
         """
         Reranks a list of candidate chunks against the query.
@@ -266,6 +271,10 @@ class RerankerService:
         limit = top_k if top_k is not None else settings.RERANK_TOP_K
         # Ensure at least 3 candidates are retained if available, up to limit
         limit = max(min(3, len(candidates)), min(limit, len(candidates)))
+
+        # In offline/deterministic mode, bypass external APIs and PyTorch downloads
+        if offline:
+            return self._rerank_deterministic(query, candidates, limit)
 
         # 1. Try Cohere API
         cohere_results = await self._rerank_cohere(query, candidates, limit)
