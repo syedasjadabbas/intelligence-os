@@ -71,8 +71,8 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
   const [detailTab, setDetailTab] = useState<"overview" | "chunks" | "judge">("overview");
 
   // Fetch Run Details
-  const fetchRunDetail = useCallback(async () => {
-    setLoadingRun(true);
+  const fetchRunDetail = useCallback(async (silent: boolean = false) => {
+    if (!silent) setLoadingRun(true);
     setRunError(null);
     try {
       const data = await api.getEvaluation(runId);
@@ -80,13 +80,13 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
     } catch (err: any) {
       setRunError(err.message || "Failed to load evaluation run details.");
     } finally {
-      setLoadingRun(false);
+      if (!silent) setLoadingRun(false);
     }
   }, [runId]);
 
   // Fetch Results List
-  const fetchResults = useCallback(async () => {
-    setLoadingResults(true);
+  const fetchResults = useCallback(async (silent: boolean = false) => {
+    if (!silent) setLoadingResults(true);
     try {
       const passedParam =
         statusFilter === "passed"
@@ -109,7 +109,7 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
     } catch (err: any) {
       console.error("Failed to fetch evaluation results:", err);
     } finally {
-      setLoadingResults(false);
+      if (!silent) setLoadingResults(false);
     }
   }, [runId, page, statusFilter, categoryFilter]);
 
@@ -119,6 +119,18 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
       fetchResults();
     }
   }, [user, runId, fetchRunDetail, fetchResults]);
+
+  // Auto-polling when run is active
+  useEffect(() => {
+    if (!run || (run.status !== "PENDING" && run.status !== "RUNNING")) return;
+
+    const intervalId = setInterval(() => {
+      fetchRunDetail(true);
+      fetchResults(true);
+    }, 2500);
+
+    return () => clearInterval(intervalId);
+  }, [run, fetchRunDetail, fetchResults]);
 
   // Fetch individual result detail on inspection
   const handleInspectCase = async (resultId: string) => {
@@ -202,14 +214,30 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
                 {run.judge_type === "llm" ? "LLM Judge" : "Deterministic Judge"}
               </span>
               <span
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
                   run.status === "COMPLETED"
                     ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                    : run.status === "RUNNING"
+                    ? "bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse"
+                    : run.status === "PENDING"
+                    ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
                     : "bg-rose-500/15 text-rose-400 border-rose-500/30"
                 }`}
               >
-                {run.status === "COMPLETED" ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                {run.status}
+                {run.status === "COMPLETED" ? (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                ) : run.status === "RUNNING" ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : run.status === "PENDING" ? (
+                  <Clock className="w-3.5 h-3.5" />
+                ) : (
+                  <XCircle className="w-3.5 h-3.5" />
+                )}
+                {run.status === "PENDING"
+                  ? "QUEUED"
+                  : run.status === "RUNNING"
+                  ? `RUNNING (${run.progress_current ?? 0}/${run.progress_total || run.total_test_cases})`
+                  : run.status}
               </span>
             </div>
           )}
@@ -233,6 +261,75 @@ export default function EvaluationRunDetailPage({ params }: PageProps) {
           <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{runError}</span>
+          </div>
+        )}
+
+        {/* Live Progress Banner when RUNNING */}
+        {run && run.status === "RUNNING" && (
+          <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                <RefreshCw className="w-5 h-5 animate-spin" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  Evaluation Run in Progress
+                </h3>
+                <p className="text-xs text-blue-200/80">
+                  Executing benchmark cases and evaluating retrieval & generation quality in background...
+                </p>
+              </div>
+            </div>
+            <div className="w-full sm:w-64 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs font-medium">
+                <span className="text-blue-300">
+                  {run.progress_current ?? 0} / {run.progress_total || run.total_test_cases} Cases
+                </span>
+                <span className="text-blue-300 font-mono">
+                  {Math.round(((run.progress_current ?? 0) / (run.progress_total || 1)) * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-blue-500/20">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round(((run.progress_current ?? 0) / (run.progress_total || 1)) * 100)
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Queued Banner when PENDING */}
+        {run && run.status === "PENDING" && (
+          <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center gap-3 text-amber-200 animate-in fade-in">
+            <Clock className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
+            <div>
+              <h3 className="text-sm font-semibold text-white">Evaluation Queued</h3>
+              <p className="text-xs text-amber-200/80">
+                The run has been registered and is queued for execution. Polling for live updates...
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Failure Banner when FAILED */}
+        {run && run.status === "FAILED" && (
+          <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 flex items-start gap-3 text-rose-200 animate-in fade-in">
+            <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-white">Evaluation Run Failed</h3>
+              <p className="text-xs text-rose-300">
+                {run.error_message || "An unexpected error interrupted benchmark evaluation."}
+              </p>
+              <p className="text-[11px] text-rose-400/80">
+                {run.progress_current ?? 0} out of {run.progress_total || run.total_test_cases} test cases were evaluated before failure.
+              </p>
+            </div>
           </div>
         )}
 

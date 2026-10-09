@@ -358,10 +358,15 @@ async def run_evaluation_api_tests():
         )
         assert admin_post.status_code == 201
         new_run = admin_post.json()
-        assert new_run["status"] == "COMPLETED"
+        assert new_run["status"] in ("PENDING", "COMPLETED")
         assert new_run["total_test_cases"] == 2
-        assert "pass_rate" in new_run
-        print(f"[PASS] ADMIN successfully created and executed run {new_run['id']} (Pass Rate: {new_run['pass_rate']:.1%}).")
+        # Polling/checking run detail confirms completion
+        polled_res = await client.get(f"/api/v1/evaluations/{new_run['id']}", headers=headers_admin1)
+        assert polled_res.status_code == 200
+        polled_run = polled_res.json()
+        assert polled_run["status"] == "COMPLETED"
+        assert "pass_rate" in polled_run
+        print(f"[PASS] ADMIN successfully created and executed run {new_run['id']} (Pass Rate: {polled_run['pass_rate']:.1%}).")
 
         # 4. Run Detail Verification & 404 Inaccessibility
         print("\n--- 4. Run Detail & Cross-Tenant 404 Inaccessibility ---")

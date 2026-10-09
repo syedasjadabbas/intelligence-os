@@ -135,6 +135,9 @@ class EvalRunSummary(BaseModel):
     mean_latency_ms: Optional[float] = None
     latency_p95_ms: Optional[float] = None
     judge_type: Optional[str] = None
+    progress_current: int = 0
+    progress_total: int = 0
+    error_message: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -155,6 +158,9 @@ class EvaluationRunListItem(BaseModel):
     total_test_cases: int
     passed_test_cases: int
     pass_rate: float = 0.0
+    progress_current: int = 0
+    progress_total: int = 0
+    error_message: Optional[str] = None
     recall_at_3: Optional[float] = None
     recall_at_5: Optional[float] = None
     mrr: Optional[float] = None
@@ -189,6 +195,9 @@ class EvaluationRunDetail(BaseModel):
     total_test_cases: int
     passed_test_cases: int
     pass_rate: float = 0.0
+    progress_current: int = 0
+    progress_total: int = 0
+    error_message: Optional[str] = None
     recall_at_3: Optional[float] = None
     recall_at_5: Optional[float] = None
     mrr: Optional[float] = None

@@ -461,6 +461,9 @@ export interface EvaluationRunListItem {
   total_test_cases: number;
   passed_test_cases: number;
   pass_rate: number;
+  progress_current?: number;
+  progress_total?: number;
+  error_message?: string | null;
   recall_at_3?: number | null;
   recall_at_5?: number | null;
   mrr?: number | null;

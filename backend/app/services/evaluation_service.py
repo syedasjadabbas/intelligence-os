@@ -4,7 +4,7 @@ Enforces strict multi-tenant isolation (org_id scoping), executes bounded
 benchmarks synchronously via EvalRunner, and computes run comparisons.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,6 +30,10 @@ from app.schemas.evaluation import (
 logger = logging.getLogger(__name__)
 
 BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "eval" / "benchmarks"
+
+# In-memory tracking of currently executing/pending evaluation run IDs in this process.
+# Prevents false positive failure marking of active runs during orphaned run recovery checks.
+_active_run_ids: set[uuid.UUID] = set()
 
 
 def _extract_judge_type(run: EvalRun) -> str:
@@ -62,6 +66,9 @@ def _to_run_list_item(run: EvalRun) -> EvaluationRunListItem:
         total_test_cases=run.total_test_cases,
         passed_test_cases=run.passed_test_cases,
         pass_rate=_compute_pass_rate(run.passed_test_cases, run.total_test_cases),
+        progress_current=getattr(run, "progress_current", 0) or 0,
+        progress_total=getattr(run, "progress_total", 0) or 0,
+        error_message=getattr(run, "error_message", None),
         recall_at_3=run.recall_at_3,
         recall_at_5=run.recall_at_5,
         mrr=run.mrr,
@@ -96,6 +103,9 @@ def _to_run_detail(run: EvalRun) -> EvaluationRunDetail:
         total_test_cases=run.total_test_cases,
         passed_test_cases=run.passed_test_cases,
         pass_rate=_compute_pass_rate(run.passed_test_cases, run.total_test_cases),
+        progress_current=getattr(run, "progress_current", 0) or 0,
+        progress_total=getattr(run, "progress_total", 0) or 0,
+        error_message=getattr(run, "error_message", None),
         recall_at_3=run.recall_at_3,
         recall_at_5=run.recall_at_5,
         mrr=run.mrr,
@@ -477,6 +487,212 @@ class EvaluationService:
             regressed_cases_count=regressed_cases_count,
             improved_cases_count=improved_cases_count,
         )
+
+    @staticmethod
+    async def create_pending_run(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        payload: EvaluationRunCreate,
+    ) -> EvaluationRunDetail:
+        """
+        Initializes an evaluation run record in PENDING status for asynchronous execution.
+        Enforces hard server-side limit cap of MAX_EVAL_CASES (50).
+        """
+        MAX_EVAL_CASES = 50
+        requested_limit = payload.limit if payload.limit is not None else MAX_EVAL_CASES
+        bounded_limit = max(1, min(requested_limit, MAX_EVAL_CASES))
+
+        judge_mode = payload.judge_type.strip().lower()
+        judge_name = "LLMJudge" if judge_mode == "llm" else "DeterministicJudge"
+        is_offline = payload.offline if judge_mode != "llm" else False
+
+        run_id = uuid.uuid4()
+        eval_run = EvalRun(
+            id=run_id,
+            org_id=org_id,
+            dataset_name=payload.dataset_name,
+            dataset_version="1.0.0",
+            status="PENDING",
+            llm_provider="gemini" if judge_mode == "llm" else "deterministic-offline",
+            llm_model="gemini-2.5-flash" if judge_mode == "llm" else "deterministic",
+            embedding_model="feature-hashing" if is_offline else "text-embedding-3-small",
+            reranker_model="deterministic-cross-scoring",
+            total_test_cases=bounded_limit,
+            passed_test_cases=0,
+            progress_current=0,
+            progress_total=bounded_limit,
+            error_message=None,
+            config_snapshot={
+                "offline": is_offline,
+                "judge": judge_name,
+                "limit": bounded_limit,
+                "top_k_retrieval": 10,
+                "top_k_rerank": 5,
+                "dataset_name": payload.dataset_name,
+                "run_name": f"async-run-{int(datetime.now().timestamp())}",
+            },
+            summary_metrics={},
+            regression_summary={},
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(eval_run)
+        await db.commit()
+        await db.refresh(eval_run)
+
+        _active_run_ids.add(run_id)
+        return _to_run_detail(eval_run)
+
+    @staticmethod
+    async def recover_orphaned_runs(session_factory=None) -> int:
+        """
+        Recovers evaluation runs left in PENDING or RUNNING status after a server restart.
+        Ensures that runs currently actively executing in this process (_active_run_ids)
+        are NOT falsely marked as failed.
+        """
+        from app.core.database import get_session_factory
+        session_maker = session_factory or get_session_factory()
+
+        async with session_maker() as db:
+            stmt = select(EvalRun).where(EvalRun.status.in_(["PENDING", "RUNNING"]))
+            res = await db.execute(stmt)
+            candidate_runs = res.scalars().all()
+
+            recovered_count = 0
+            for run in candidate_runs:
+                # Do not falsely mark an actively running task as failed
+                if run.id in _active_run_ids:
+                    continue
+
+                run.status = "FAILED"
+                run.completed_at = datetime.now(timezone.utc)
+                run.error_message = (
+                    "Evaluation run was interrupted by a server restart or process termination."
+                )
+                if not run.summary_metrics:
+                    run.summary_metrics = {}
+                run.summary_metrics["error"] = "Server restart interrupted evaluation run"
+                recovered_count += 1
+
+            if recovered_count > 0:
+                await db.commit()
+                logger.info(f"Recovered {recovered_count} orphaned evaluation run(s) from previous execution.")
+
+            return recovered_count
+
+    @staticmethod
+    async def mark_in_flight_runs_as_interrupted(session_factory=None) -> int:
+        """
+        Cleanly marks any actively running evaluation runs as FAILED during graceful server shutdown.
+        """
+        if not _active_run_ids:
+            return 0
+
+        from app.core.database import get_session_factory
+        session_maker = session_factory or get_session_factory()
+
+        async with session_maker() as db:
+            target_ids = list(_active_run_ids)
+            stmt = select(EvalRun).where(
+                EvalRun.id.in_(target_ids),
+                EvalRun.status.in_(["PENDING", "RUNNING"]),
+            )
+            res = await db.execute(stmt)
+            in_flight = res.scalars().all()
+
+            for run in in_flight:
+                run.status = "FAILED"
+                run.completed_at = datetime.now(timezone.utc)
+                run.error_message = "Evaluation run was interrupted by server shutdown."
+                if not run.summary_metrics:
+                    run.summary_metrics = {}
+                run.summary_metrics["error"] = "Server shutdown interrupted evaluation run"
+
+            if in_flight:
+                await db.commit()
+            _active_run_ids.clear()
+            return len(in_flight)
+
+
+async def process_evaluation_run_background(
+    run_id: uuid.UUID,
+    org_id: uuid.UUID,
+    dataset_name: str,
+    judge_type: str,
+    limit: Optional[int],
+    offline: bool,
+    session_factory=None,
+) -> None:
+    """
+    Background worker task for asynchronous evaluation runs.
+    Uses its own dedicated database session from session_factory.
+    Updates EvalRun status from PENDING -> RUNNING -> COMPLETED (or FAILED).
+    Tracks incremental progress_current and records error_message on failure.
+    """
+    from app.core.database import get_session_factory
+    from sqlalchemy import update
+
+    _active_run_ids.add(run_id)
+
+    session_maker = session_factory or get_session_factory()
+
+    MAX_EVAL_CASES = 50
+    requested_limit = limit if limit is not None else MAX_EVAL_CASES
+    bounded_limit = max(1, min(requested_limit, MAX_EVAL_CASES))
+
+    dataset_path = BENCHMARKS_DIR / f"{dataset_name}.json"
+    if not dataset_path.exists():
+        dataset_path = BENCHMARKS_DIR / "golden_dataset.json"
+
+    judge_mode = judge_type.strip().lower()
+    if judge_mode == "llm":
+        judge = LLMJudge()
+        is_offline = False
+    else:
+        judge = DeterministicJudge()
+        is_offline = offline
+
+    try:
+        async with session_maker() as db:
+            try:
+                runner = EvalRunner(
+                    db=db,
+                    org_id=org_id,
+                    judge=judge,
+                    offline=is_offline,
+                )
+                logger.info(
+                    f"Starting background evaluation run {run_id} for org {org_id} "
+                    f"(dataset: {dataset_name}, judge: {judge_mode}, limit: {bounded_limit})"
+                )
+                await runner.run_benchmark(
+                    dataset_input=dataset_path,
+                    run_name=f"async-run-{int(datetime.now().timestamp())}",
+                    limit=bounded_limit,
+                    existing_run_id=run_id,
+                )
+                logger.info(f"Background evaluation run {run_id} completed successfully.")
+            except Exception as exc:
+                logger.error(
+                    f"Background evaluation run {run_id} encountered fatal exception: {exc}",
+                    exc_info=True,
+                )
+                try:
+                    update_stmt = (
+                        update(EvalRun)
+                        .where(EvalRun.id == run_id)
+                        .values(
+                            status="FAILED",
+                            completed_at=datetime.now(timezone.utc),
+                            error_message=str(exc),
+                            summary_metrics={"error": str(exc)},
+                        )
+                    )
+                    await db.execute(update_stmt)
+                    await db.commit()
+                except Exception as commit_exc:
+                    logger.error(f"Failed to record FAILED status for run {run_id}: {commit_exc}")
+    finally:
+        _active_run_ids.discard(run_id)
 
 
 evaluation_service = EvaluationService()

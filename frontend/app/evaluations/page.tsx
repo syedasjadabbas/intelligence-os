@@ -66,8 +66,8 @@ export default function EvaluationsDashboardPage() {
   const [runError, setRunError] = useState<string | null>(null);
 
   // Load runs
-  const fetchRuns = useCallback(async () => {
-    setLoading(true);
+  const fetchRuns = useCallback(async (silent: boolean = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await api.listEvaluations({
@@ -79,7 +79,7 @@ export default function EvaluationsDashboardPage() {
     } catch (err: any) {
       setError(err.message || "Failed to load evaluation history.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [judgeFilter, statusFilter]);
 
@@ -88,6 +88,20 @@ export default function EvaluationsDashboardPage() {
       fetchRuns();
     }
   }, [user, fetchRuns]);
+
+  // Active runs auto-polling
+  useEffect(() => {
+    const hasActiveRuns = runs.some(
+      (r) => r.status === "PENDING" || r.status === "RUNNING"
+    );
+    if (!hasActiveRuns) return;
+
+    const intervalId = setInterval(() => {
+      fetchRuns(true);
+    }, 2500);
+
+    return () => clearInterval(intervalId);
+  }, [runs, fetchRuns]);
 
   // Handle run selection for comparison (max 2)
   const handleToggleSelectRun = (runId: string) => {
@@ -507,7 +521,21 @@ export default function EvaluationsDashboardPage() {
                           {r.dataset_name} <span className="text-[10px] text-slate-500">v{r.dataset_version}</span>
                         </td>
                         <td className="p-3 text-slate-300">
-                          {r.passed_test_cases}/{r.total_test_cases}
+                          {r.status === "COMPLETED" ? (
+                            `${r.passed_test_cases}/${r.total_test_cases}`
+                          ) : r.status === "RUNNING" ? (
+                            <span className="text-blue-400 font-mono text-xs">
+                              {r.progress_current ?? 0}/{r.progress_total || r.total_test_cases} done
+                            </span>
+                          ) : r.status === "PENDING" ? (
+                            <span className="text-amber-400/80 font-mono text-xs">
+                              Queued ({r.total_test_cases})
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-xs">
+                              {r.progress_current ?? 0}/{r.total_test_cases}
+                            </span>
+                          )}
                         </td>
                         <td className="p-3">
                           <span
@@ -521,17 +549,21 @@ export default function EvaluationsDashboardPage() {
                           </span>
                         </td>
                         <td className="p-3">
-                          <span
-                            className={`font-semibold ${
-                              r.pass_rate >= 0.95
-                                ? "text-emerald-400"
-                                : r.pass_rate >= 0.8
-                                ? "text-amber-400"
-                                : "text-rose-400"
-                            }`}
-                          >
-                            {(r.pass_rate * 100).toFixed(1)}%
-                          </span>
+                          {r.status === "COMPLETED" ? (
+                            <span
+                              className={`font-semibold ${
+                                r.pass_rate >= 0.95
+                                  ? "text-emerald-400"
+                                  : r.pass_rate >= 0.8
+                                  ? "text-amber-400"
+                                  : "text-rose-400"
+                              }`}
+                            >
+                              {(r.pass_rate * 100).toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 text-xs">—</span>
+                          )}
                         </td>
                         <td className="p-3 font-mono text-slate-300">
                           {r.recall_at_5 !== null && r.recall_at_5 !== undefined
@@ -555,15 +587,48 @@ export default function EvaluationsDashboardPage() {
                               COMPLETED
                             </span>
                           ) : r.status === "RUNNING" ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse">
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                              RUNNING
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse">
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                RUNNING {r.progress_total ? `(${r.progress_current ?? 0}/${r.progress_total})` : ""}
+                              </span>
+                              {r.progress_total && r.progress_total > 0 && (
+                                <div className="w-24 bg-slate-800 rounded-full h-1 overflow-hidden">
+                                  <div
+                                    className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+                                    style={{
+                                      width: `${Math.min(
+                                        100,
+                                        Math.round(((r.progress_current ?? 0) / r.progress_total) * 100)
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          ) : r.status === "PENDING" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              <Clock className="w-3 h-3" />
+                              QUEUED
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                              <XCircle className="w-3 h-3" />
-                              FAILED
-                            </span>
+                            <div className="flex flex-col gap-0.5">
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                                title={r.error_message || undefined}
+                              >
+                                <XCircle className="w-3 h-3" />
+                                FAILED
+                              </span>
+                              {r.error_message && (
+                                <span
+                                  className="text-[10px] text-rose-400/80 truncate max-w-[130px]"
+                                  title={r.error_message}
+                                >
+                                  {r.error_message}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="p-3 text-right">

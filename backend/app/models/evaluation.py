@@ -77,7 +77,7 @@ class EvalRun(Base):
         nullable=True,
     )
 
-    # Test case counts
+    # Test case counts & progress tracking
     total_test_cases: Mapped[int] = mapped_column(
         Integer,
         default=0,
@@ -87,6 +87,22 @@ class EvalRun(Base):
         Integer,
         default=0,
         nullable=False,
+    )
+    progress_current: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    progress_total: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
     )
 
     # Strongly typed aggregate metrics

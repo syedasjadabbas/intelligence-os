@@ -20,17 +20,35 @@ logger = logging.getLogger("intelligence_os")
 async def lifespan(app: FastAPI):
     """
     Application lifecycle management.
-    Performs startup checks (database connection & pgvector extensions)
-    and clean shutdown (disposes connection pools).
+    Performs startup checks (database connection & pgvector extensions),
+    recovers any orphaned evaluation runs from prior server process termination,
+    and cleanly disposes connection pools on shutdown.
     """
     logger.info(
         f"Starting {settings.PROJECT_NAME} v{settings.VERSION} in {settings.ENVIRONMENT} mode..."
     )
     # Initialize database extensions on startup
     await init_db()
+
+    # Recover any orphaned evaluation runs left over from previous process termination
+    try:
+        from app.services.evaluation_service import evaluation_service
+        orphaned_count = await evaluation_service.recover_orphaned_runs()
+        if orphaned_count > 0:
+            logger.info(f"Recovered {orphaned_count} orphaned evaluation run(s) from prior server process.")
+    except Exception as e:
+        logger.warning(f"Could not check for orphaned evaluation runs on startup: {e}")
+
     yield
+
     # Cleanup resources on shutdown
     logger.info(f"Shutting down {settings.PROJECT_NAME}...")
+    try:
+        from app.services.evaluation_service import evaluation_service
+        await evaluation_service.mark_in_flight_runs_as_interrupted()
+    except Exception as e:
+        logger.debug(f"Could not cleanly mark in-flight evaluation runs on shutdown: {e}")
+
     await engine.dispose()
 
 

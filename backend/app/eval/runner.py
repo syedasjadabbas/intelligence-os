@@ -136,10 +136,12 @@ class EvalRunner:
         dataset_input: Union[BenchmarkDataset, str, Path],
         run_name: Optional[str] = None,
         limit: Optional[int] = None,
+        existing_run_id: Optional[uuid.UUID] = None,
     ) -> EvalRun:
         """
         Executes an evaluation benchmark run and persists results to the database.
         Optionally limits the number of test cases via limit (e.g., limit=10).
+        If existing_run_id is supplied, attaches to and updates an existing PENDING run.
         """
         # 1. Load benchmark dataset
         if isinstance(dataset_input, (str, Path)):
@@ -161,35 +163,88 @@ class EvalRunner:
             f"(v{dataset.version}) with judge '{judge_name}' under Org {self.org_id}"
         )
 
-        run_id = uuid.uuid4()
-        eval_run = EvalRun(
-            id=run_id,
-            org_id=self.org_id,
-            dataset_name=dataset.dataset_name,
-            dataset_version=dataset.version,
-            status="RUNNING",
-            llm_provider="deterministic-offline" if self.offline else getattr(self.judge, "provider", "gemini"),
-            llm_model="deterministic" if self.offline else getattr(self.judge, "model_name", "gemini-2.5-flash"),
-            embedding_model="feature-hashing" if self.offline else "text-embedding-3-small",
-            reranker_model="deterministic-cross-scoring",
-            total_test_cases=len(test_cases),
-            passed_test_cases=0,
-            config_snapshot={
-                "offline": self.offline,
-                "judge": judge_name,
-                "limit": effective_limit,
-                "top_k_retrieval": 10,
-                "top_k_rerank": 5,
-                "dataset_name": dataset.dataset_name,
-                "run_name": run_name or f"run-{dataset.dataset_name}-{int(time.time())}",
-            },
-            summary_metrics={},
-            regression_summary={},
-            started_at=datetime.now(timezone.utc),
-        )
-        self.db.add(eval_run)
-        await self.db.commit()
-        await self.db.refresh(eval_run)
+        llm_provider = "deterministic-offline" if self.offline else getattr(self.judge, "provider", "gemini")
+        llm_model = "deterministic" if self.offline else getattr(self.judge, "model_name", "gemini-2.5-flash")
+        embedding_model = "feature-hashing" if self.offline else "text-embedding-3-small"
+        reranker_model = "deterministic-cross-scoring"
+        config_snapshot = {
+            "offline": self.offline,
+            "judge": judge_name,
+            "limit": effective_limit,
+            "top_k_retrieval": 10,
+            "top_k_rerank": 5,
+            "dataset_name": dataset.dataset_name,
+            "run_name": run_name or f"run-{dataset.dataset_name}-{int(time.time())}",
+        }
+
+        if existing_run_id is not None:
+            run_id = existing_run_id
+            eval_run = await self.db.get(EvalRun, existing_run_id)
+            if eval_run is not None:
+                eval_run.status = "RUNNING"
+                eval_run.dataset_name = dataset.dataset_name
+                eval_run.dataset_version = dataset.version
+                eval_run.llm_provider = llm_provider
+                eval_run.llm_model = llm_model
+                eval_run.embedding_model = embedding_model
+                eval_run.reranker_model = reranker_model
+                eval_run.total_test_cases = len(test_cases)
+                eval_run.progress_total = len(test_cases)
+                eval_run.progress_current = 0
+                eval_run.error_message = None
+                eval_run.config_snapshot = config_snapshot
+                eval_run.started_at = datetime.now(timezone.utc)
+                await self.db.commit()
+                await self.db.refresh(eval_run)
+            else:
+                eval_run = EvalRun(
+                    id=run_id,
+                    org_id=self.org_id,
+                    dataset_name=dataset.dataset_name,
+                    dataset_version=dataset.version,
+                    status="RUNNING",
+                    llm_provider=llm_provider,
+                    llm_model=llm_model,
+                    embedding_model=embedding_model,
+                    reranker_model=reranker_model,
+                    total_test_cases=len(test_cases),
+                    passed_test_cases=0,
+                    progress_current=0,
+                    progress_total=len(test_cases),
+                    error_message=None,
+                    config_snapshot=config_snapshot,
+                    summary_metrics={},
+                    regression_summary={},
+                    started_at=datetime.now(timezone.utc),
+                )
+                self.db.add(eval_run)
+                await self.db.commit()
+                await self.db.refresh(eval_run)
+        else:
+            run_id = uuid.uuid4()
+            eval_run = EvalRun(
+                id=run_id,
+                org_id=self.org_id,
+                dataset_name=dataset.dataset_name,
+                dataset_version=dataset.version,
+                status="RUNNING",
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                embedding_model=embedding_model,
+                reranker_model=reranker_model,
+                total_test_cases=len(test_cases),
+                passed_test_cases=0,
+                progress_current=0,
+                progress_total=len(test_cases),
+                error_message=None,
+                config_snapshot=config_snapshot,
+                summary_metrics={},
+                regression_summary={},
+                started_at=datetime.now(timezone.utc),
+            )
+            self.db.add(eval_run)
+            await self.db.commit()
+            await self.db.refresh(eval_run)
 
         results: List[EvalRunResult] = []
         latencies: List[float] = []
@@ -365,6 +420,8 @@ class EvalRunner:
                 )
                 self.db.add(res)
                 results.append(res)
+                eval_run.progress_current = len(results)
+                await self.db.commit()
 
             # 3. Compute Aggregate Run Metrics
             total_cases = len(results)
@@ -410,6 +467,9 @@ class EvalRunner:
             eval_run.status = "COMPLETED"
             eval_run.completed_at = datetime.now(timezone.utc)
             eval_run.passed_test_cases = passed_count
+            eval_run.progress_current = total_cases
+            eval_run.progress_total = total_cases
+            eval_run.error_message = None
             eval_run.recall_at_3 = round(avg_recall_3, 4)
             eval_run.recall_at_5 = round(avg_recall_5, 4)
             eval_run.mrr = round(avg_mrr, 4)
@@ -472,6 +532,8 @@ class EvalRunner:
                     .values(
                         status="FAILED",
                         completed_at=datetime.now(timezone.utc),
+                        error_message=str(exc),
+                        progress_current=len(results),
                         summary_metrics={
                             "error": str(exc),
                             "total_test_cases": len(test_cases),

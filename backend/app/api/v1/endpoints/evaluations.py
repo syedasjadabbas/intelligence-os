@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -26,7 +26,10 @@ from app.schemas.evaluation import (
     EvaluationRunDetail,
     EvaluationRunsPage,
 )
-from app.services.evaluation_service import evaluation_service
+from app.services.evaluation_service import (
+    evaluation_service,
+    process_evaluation_run_background,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,25 +66,37 @@ async def list_evaluation_runs(
     response_model=EvaluationRunDetail,
     status_code=status.HTTP_201_CREATED,
     summary="Start an evaluation run",
-    description="Synchronously executes a bounded evaluation benchmark run. Requires organization ADMIN role.",
+    description="Initializes an asynchronous evaluation benchmark run with progress tracking. Requires organization ADMIN role.",
 )
 async def create_evaluation_run(
     payload: EvaluationRunCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_admin: User = Depends(get_current_active_admin),
 ):
     try:
-        run_detail = await evaluation_service.start_evaluation_run(
+        pending_run = await evaluation_service.create_pending_run(
             db=db,
             org_id=current_admin.org_id,
             payload=payload,
         )
-        return run_detail
+
+        background_tasks.add_task(
+            process_evaluation_run_background,
+            run_id=pending_run.id,
+            org_id=current_admin.org_id,
+            dataset_name=payload.dataset_name,
+            judge_type=payload.judge_type,
+            limit=payload.limit,
+            offline=payload.offline,
+        )
+
+        return pending_run
     except Exception as e:
-        logger.error(f"Failed to execute evaluation run: {e}", exc_info=True)
+        logger.error(f"Failed to initiate evaluation run: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Evaluation execution failed: {str(e)}",
+            detail=f"Evaluation initiation failed: {str(e)}",
         )
 
 
