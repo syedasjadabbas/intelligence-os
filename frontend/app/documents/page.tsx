@@ -1,29 +1,18 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import {
-  api,
-  DocumentItem,
-  DocumentStatus,
-} from "@/lib/api";
-import { formatBytes, formatDate } from "@/lib/utils";
-import {
-  UploadCloud,
-  FileText,
-  Trash2,
-  RefreshCw,
-  ArrowLeft,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
-  XCircle,
-  Shield,
-  Layers,
-  FileCheck,
-  BarChart3,
-} from "lucide-react";
+import { api, DocumentItem } from "@/lib/api";
+import { cn, formatBytes, formatDate, getErrorMessage } from "@/lib/utils";
+import { CloudUpload, FileText, RefreshCw, Trash2 } from "lucide-react";
+import { AppShell, PageHeader } from "@/components/app-shell";
+import { DocumentStatusBadge } from "@/components/status";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Spinner, LoadingState } from "@/components/ui/spinner";
+import { EmptyState, Panel, PanelHeader } from "@/components/ui/surface";
+import { TableMessage, TableWrap, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 
 export default function DocumentsPage() {
   const { user, org } = useAuth();
@@ -40,7 +29,7 @@ export default function DocumentsPage() {
     try {
       const docs = await api.listDocuments();
       setDocuments(docs);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to fetch documents:", err);
     } finally {
       setLoading(false);
@@ -88,8 +77,8 @@ export default function DocumentsPage() {
     try {
       await api.uploadDocument(file);
       await fetchDocuments();
-    } catch (err: any) {
-      setUploadError(err.message || "Failed to upload document.");
+    } catch (err: unknown) {
+      setUploadError(getErrorMessage(err) || "Failed to upload document.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -127,126 +116,90 @@ export default function DocumentsPage() {
     try {
       await api.deleteDocument(docId);
       setDocuments((prev) => prev.filter((d) => d.id !== docId));
-    } catch (err: any) {
-      alert(err.message || "Failed to delete document.");
+    } catch (err: unknown) {
+      alert(getErrorMessage(err) || "Failed to delete document.");
     } finally {
       setDeletingId(null);
     }
   };
 
-  const getStatusBadge = (status: DocumentStatus) => {
-    switch (status) {
-      case "COMPLETED":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            COMPLETED
-          </span>
-        );
-      case "PROCESSING":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 animate-pulse">
-            <Clock className="w-3.5 h-3.5" />
-            PROCESSING
-          </span>
-        );
-      case "QUEUED":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/15 text-slate-300 border border-slate-500/30">
-            <Clock className="w-3.5 h-3.5" />
-            QUEUED
-          </span>
-        );
-      case "FAILED":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30">
-            <XCircle className="w-3.5 h-3.5" />
-            FAILED
-          </span>
-        );
-    }
-  };
+  // Derived summary counts (presentation only)
+  const indexedCount = documents.filter((d) => d.status === "COMPLETED").length;
+  const activeCount = documents.filter(
+    (d) => d.status === "QUEUED" || d.status === "PROCESSING"
+  ).length;
+  const failedCount = documents.filter((d) => d.status === "FAILED").length;
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col">
-      {/* Navigation Header */}
-      <header className="border-b border-slate-800 bg-[#0d131f] px-6 py-3.5 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="p-1.5 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors flex items-center gap-1.5 text-xs font-medium cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4 text-slate-400" />
-            <span>Back to Chat</span>
-          </Link>
-          <div className="h-5 w-px bg-slate-800" />
-          <div>
-            <h1 className="text-base font-semibold text-white flex items-center gap-2">
-              <Layers className="w-4 h-4 text-slate-300" />
-              Document Admin Console
-            </h1>
-            <p className="text-[11px] text-slate-400">
-              Manage organization knowledge store, chunking, and pgvector embeddings
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {org && (
-            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-slate-400">Tenant:</span>
-              <span className="font-semibold text-white">{org.name}</span>
-            </div>
-          )}
-          <Link
-            href="/evaluations"
-            className="p-1.5 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors flex items-center gap-1.5 text-xs font-medium cursor-pointer"
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Evaluations</span>
-          </Link>
-          <button
+    <AppShell width="default">
+      <PageHeader
+        eyebrow="Knowledge base"
+        title="Documents"
+        description="Manage your organization's knowledge store. Uploaded PDFs are parsed, chunked by section, embedded and indexed for hybrid search."
+        actions={
+          <Button
+            variant="secondary"
             onClick={() => fetchDocuments()}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer border border-slate-700/60"
             title="Refresh documents"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-      </header>
+            <RefreshCw className={cn(loading && "animate-spin")} />
+            Refresh
+          </Button>
+        }
+      />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
-        {/* Upload Card */}
-        <div className="rounded-xl p-6 border border-slate-800 bg-slate-900/60 shadow-sm">
-          <h2 className="text-sm font-semibold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-            <UploadCloud className="w-4 h-4 text-slate-300" />
-            Ingest Knowledge Document
-          </h2>
-          <p className="text-xs text-slate-400 mb-4">
-            Upload PDF files to parse text, extract section headings, generate 1536-dim vector embeddings, and build full-text search indexes.
-          </p>
+      {/* Summary */}
+      <dl className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+        {[
+          { label: "Documents", value: documents.length, tone: "text-fg" },
+          { label: "Indexed", value: indexedCount, tone: "text-success" },
+          { label: "In progress", value: activeCount, tone: activeCount ? "text-info" : "text-fg" },
+          { label: "Failed", value: failedCount, tone: failedCount ? "text-danger" : "text-fg" },
+        ].map((s) => (
+          <div key={s.label} className="bg-surface px-4 py-3.5">
+            <dt className="text-xs font-medium text-fg-subtle">{s.label}</dt>
+            <dd className={cn("tabular mt-1.5 font-mono text-xl font-medium", s.tone)}>
+              {loading && documents.length === 0 ? "—" : s.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
 
+      {/* Upload */}
+      <Panel className="mb-6">
+        <PanelHeader
+          title="Ingest document"
+          description="PDF files are parsed for text and section headings, embedded as 1536-dim vectors and added to the full-text index."
+        />
+        <div className="space-y-4 p-4 sm:p-5">
           {uploadError && (
-            <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{uploadError}</span>
-            </div>
+            <Alert tone="danger" onDismiss={() => setUploadError(null)}>
+              {uploadError}
+            </Alert>
           )}
 
-          {/* Drag & Drop Zone */}
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Upload a PDF document"
+            aria-busy={uploading || undefined}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            className={`border border-dashed rounded-xl p-8 text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
-              dragActive
-                ? "border-blue-500 bg-blue-500/10 scale-[1.01]"
-                : "border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-900/60"
-            }`}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            className={cn(
+              "group flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-6 py-10 text-center transition-[border-color,background-color] duration-150",
+              dragActive
+                ? "border-accent bg-accent/[0.06]"
+                : "border-line-strong bg-canvas/40 hover:border-fg-faint hover:bg-surface-2"
+            )}
           >
             <input
               ref={fileInputRef}
@@ -260,113 +213,126 @@ export default function DocumentsPage() {
               }}
             />
 
-            <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-300 mb-3 shadow-sm">
-              {uploading ? (
-                <div className="w-5 h-5 border-2 border-slate-500 border-t-white rounded-full animate-spin" />
-              ) : (
-                <UploadCloud className="w-6 h-6 text-slate-300" />
+            <div
+              className={cn(
+                "mb-4 flex size-11 items-center justify-center rounded-lg border bg-surface-2 transition-colors",
+                dragActive
+                  ? "border-accent/50 text-accent"
+                  : "border-line-strong text-fg-subtle group-hover:text-fg-muted"
               )}
+            >
+              {uploading ? <Spinner className="size-5 text-accent" /> : <CloudUpload className="size-5" />}
             </div>
 
-            <p className="text-sm font-semibold text-white mb-1">
+            <p className="text-sm font-medium text-fg">
               {uploading
-                ? "Uploading & Spawning Background Pipeline..."
-                : "Click or drag & drop PDF here"}
+                ? "Uploading and starting background pipeline…"
+                : dragActive
+                ? "Drop to upload"
+                : (
+                  <>
+                    Drop a PDF here, or <span className="text-accent-strong">browse files</span>
+                  </>
+                )}
             </p>
-            <p className="text-xs text-slate-400 max-w-sm">
-              Maximum file size: 20MB. Document chunks will be isolated exclusively to{" "}
-              <span className="text-slate-200 font-medium">{org?.name || "your organization"}</span>.
+            <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-fg-subtle">
+              PDF only · 20 MB maximum · chunks stay isolated to{" "}
+              <span className="font-medium text-fg-muted">{org?.name || "your organization"}</span>
             </p>
           </div>
         </div>
+      </Panel>
 
-        {/* Documents Table */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
-            <div className="flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-slate-300" />
-              <h3 className="font-semibold text-white text-sm">Indexed Documents</h3>
-              <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
-                {documents.length}
-              </span>
-            </div>
+      {/* Documents table */}
+      <Panel>
+        <PanelHeader
+          title="Indexed documents"
+          count={documents.length}
+          actions={
+            activeCount > 0 ? (
+              <Badge tone="info" dot pulse>
+                Live status auto-polling active
+              </Badge>
+            ) : (
+              <span className="text-xs text-fg-subtle">Status refreshes automatically while processing</span>
+            )
+          }
+        />
 
-            <span className="text-xs text-slate-400">
-              Live status auto-polling active
-            </span>
-          </div>
-
-          {documents.length === 0 ? (
-            <div className="p-12 text-center text-slate-400">
-              <FileText className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <p className="text-sm font-medium text-slate-300">No documents indexed yet</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Upload your first technical PDF above to enable grounded hybrid retrieval.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-900/80 text-slate-400 border-b border-white/5 uppercase tracking-wider font-semibold">
-                  <tr>
-                    <th className="py-3.5 px-6">Document Title</th>
-                    <th className="py-3.5 px-6">Status</th>
-                    <th className="py-3.5 px-6">Size</th>
-                    <th className="py-3.5 px-6">Uploaded At</th>
-                    <th className="py-3.5 px-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-slate-300">
-                  {documents.map((doc) => (
-                    <tr
-                      key={doc.id}
-                      className="hover:bg-slate-800/40 transition-colors"
-                    >
-                      <td className="py-4 px-6 font-medium text-white flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-slate-800 text-cyan-400 shrink-0">
-                          <FileText className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-sm truncate max-w-md">
-                            {doc.title}
-                          </p>
-                          <p className="text-[11px] font-mono text-slate-500">
-                            ID: {doc.id}
-                          </p>
-                          {doc.error_message && (
-                            <p className="text-[11px] text-rose-400 mt-0.5">
-                              Error: {doc.error_message}
-                            </p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        {getStatusBadge(doc.status)}
-                      </td>
-                      <td className="py-4 px-6 font-mono text-slate-400">
-                        {formatBytes(doc.file_size_bytes)}
-                      </td>
-                      <td className="py-4 px-6 text-slate-400">
-                        {formatDate(doc.created_at)}
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        <button
-                          onClick={() => handleDelete(doc.id, doc.title)}
-                          disabled={deletingId === doc.id}
-                          className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50 cursor-pointer"
-                          title="Delete Document"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <TableWrap>
+          {documents.length > 0 && (
+            <THead>
+              <tr>
+                <Th>Document</Th>
+                <Th>Status</Th>
+                <Th className="hidden sm:table-cell">Size</Th>
+                <Th className="hidden md:table-cell">Uploaded</Th>
+                <Th className="text-right">
+                  <span className="sr-only">Actions</span>
+                </Th>
+              </tr>
+            </THead>
           )}
-        </div>
-      </main>
-    </div>
+          <TBody>
+            {documents.length === 0 ? (
+              <TableMessage colSpan={5}>
+                {loading ? (
+                  <LoadingState label="Loading documents…" />
+                ) : (
+                  <EmptyState
+                    icon={<FileText />}
+                    title="No documents indexed yet"
+                    description="Upload your first PDF above to enable grounded hybrid retrieval across your organization."
+                  />
+                )}
+              </TableMessage>
+            ) : (
+              documents.map((doc) => (
+                <Tr key={doc.id}>
+                  <Td className="max-w-0 w-full">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface-2 text-fg-subtle">
+                        <FileText className="size-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-fg" title={doc.title}>
+                          {doc.title}
+                        </p>
+                        <p className="truncate font-mono text-[11px] text-fg-faint">{doc.id}</p>
+                        {doc.error_message && (
+                          <p className="mt-0.5 text-xs text-danger">Error: {doc.error_message}</p>
+                        )}
+                      </div>
+                    </div>
+                  </Td>
+                  <Td>
+                    <DocumentStatusBadge status={doc.status} />
+                  </Td>
+                  <Td className="tabular hidden whitespace-nowrap font-mono text-xs text-fg-muted sm:table-cell">
+                    {formatBytes(doc.file_size_bytes)}
+                  </Td>
+                  <Td className="hidden whitespace-nowrap text-xs text-fg-muted md:table-cell">
+                    {formatDate(doc.created_at)}
+                  </Td>
+                  <Td className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleDelete(doc.id, doc.title)}
+                      disabled={deletingId === doc.id}
+                      className="hover:bg-danger/10 hover:text-danger"
+                      title="Delete Document"
+                      aria-label={`Delete ${doc.title}`}
+                    >
+                      {deletingId === doc.id ? <Spinner /> : <Trash2 />}
+                    </Button>
+                  </Td>
+                </Tr>
+              ))
+            )}
+          </TBody>
+        </TableWrap>
+      </Panel>
+    </AppShell>
   );
 }

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
+from app.core.redaction import describe_database_url, redact_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,8 @@ async def init_db() -> None:
         logger.info("PostgreSQL extensions ('uuid-ossp', 'vector') verified successfully.")
     except Exception as exc:
         logger.warning(
-            f"PostgreSQL connection to {settings.DATABASE_URL} failed ({exc}). "
+            f"PostgreSQL connection to {describe_database_url(settings.DATABASE_URL)} failed "
+            f"({type(exc).__name__}: {redact_credentials(str(exc))}). "
             "Switching to local persistent SQLite database ('intelligence_os_dev.db') for offline development..."
         )
         sqlite_url = "sqlite+aiosqlite:///intelligence_os_dev.db"

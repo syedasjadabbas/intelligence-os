@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useReducer } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import {
   api,
@@ -11,40 +10,66 @@ import {
   TestCaseDetail,
   TestCaseCreate,
   TestCaseUpdate,
-  DatasetCreate,
-  DatasetUpdate,
   EvidenceAnchor,
 } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate, getErrorMessage } from "@/lib/utils";
 import {
   ArrowLeft,
-  RefreshCw,
-  Plus,
-  Trash2,
-  Edit2,
-  FileText,
-  Search,
-  Filter,
-  Layers,
-  Database,
-  Sparkles,
-  Shield,
-  AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
-  ChevronDown,
-  X,
-  Play,
-  Upload,
-  Info,
-  HelpCircle,
-  Hash,
   BookOpen,
+  ChevronDown,
+  Database,
+  FileJson,
+  FileText,
+  Info,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  Trash2,
+  Upload,
 } from "lucide-react";
+import { AppShell, PageHeader } from "@/components/app-shell";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { Field, IconInput, Input, Select, Textarea } from "@/components/ui/field";
+import { LoadingState, Spinner } from "@/components/ui/spinner";
+import { EmptyState, Eyebrow, Panel, PanelHeader } from "@/components/ui/surface";
+import {
+  caseFormReducer,
+  getCaseSubmitTarget,
+  initialCaseFormState,
+} from "./case-form-state";
+
+/** Raw item shape accepted by the JSON importer (validated field by field below). */
+interface ImportedCase {
+  case_identifier?: string;
+  query?: string;
+  question?: string;
+  query_type?: string;
+  expected_behavior?: string;
+  ground_truth_answer?: string | null;
+  answer?: string | null;
+  key_facts?: unknown;
+  ground_truth_evidence?: unknown;
+}
+
+const QUERY_TYPE_OPTIONS = [
+  { value: "factoid", label: "Factoid" },
+  { value: "multi_hop", label: "Multi-Hop" },
+  { value: "coreference", label: "Coreference" },
+  { value: "refusal", label: "Refusal" },
+  { value: "citation_needed", label: "Citation Needed" },
+  { value: "temporal", label: "Temporal" },
+  { value: "comparative", label: "Comparative" },
+  { value: "summarization", label: "Summarization" },
+];
 
 export default function DatasetsManagementPage() {
-  const router = useRouter();
-  const { user, org } = useAuth();
+  const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
 
   // Datasets state
@@ -67,10 +92,12 @@ export default function DatasetsManagementPage() {
   const [showEditDatasetModal, setShowEditDatasetModal] = useState(false);
   const [showDeleteDatasetModal, setShowDeleteDatasetModal] = useState(false);
 
-  const [showAddCaseModal, setShowAddCaseModal] = useState(false);
-  const [showEditCaseModal, setShowEditCaseModal] = useState(false);
+  // Add / edit case dialog: the edited case is cleared whenever the dialog closes
+  const [caseForm, dispatchCaseForm] = useReducer(caseFormReducer, initialCaseFormState);
+  const showAddCaseModal = caseForm.mode === "add";
+  const showEditCaseModal = caseForm.mode === "edit";
+  const editingCase = caseForm.editingCase;
   const [showDeleteCaseModal, setShowDeleteCaseModal] = useState(false);
-  const [editingCase, setEditingCase] = useState<TestCaseDetail | null>(null);
   const [caseToDelete, setCaseToDelete] = useState<TestCaseDetail | null>(null);
 
   const [showImportModal, setShowImportModal] = useState(false);
@@ -127,8 +154,8 @@ export default function DatasetsManagementPage() {
         setSelectedDatasetId(null);
         setSelectedDatasetDetail(null);
       }
-    } catch (err: any) {
-      setGlobalError(err.message || "Failed to load datasets.");
+    } catch (err: unknown) {
+      setGlobalError(getErrorMessage(err) || "Failed to load datasets.");
     } finally {
       setLoadingDatasets(false);
     }
@@ -141,8 +168,8 @@ export default function DatasetsManagementPage() {
     try {
       const detail = await api.getDataset(datasetId);
       setSelectedDatasetDetail(detail);
-    } catch (err: any) {
-      setGlobalError(err.message || "Failed to load dataset details.");
+    } catch (err: unknown) {
+      setGlobalError(getErrorMessage(err) || "Failed to load dataset details.");
       setSelectedDatasetDetail(null);
     } finally {
       setLoadingDetail(false);
@@ -221,8 +248,8 @@ export default function DatasetsManagementPage() {
       setShowCreateDatasetModal(false);
       setSuccessMessage(`Dataset "${created.name}" created successfully.`);
       await fetchDatasets(created.id);
-    } catch (err: any) {
-      setFormError(err.message || "Failed to create dataset.");
+    } catch (err: unknown) {
+      setFormError(getErrorMessage(err) || "Failed to create dataset.");
     } finally {
       setSubmittingDataset(false);
     }
@@ -248,8 +275,8 @@ export default function DatasetsManagementPage() {
       setSuccessMessage(`Dataset "${updated.name}" updated successfully.`);
       await fetchDatasets(updated.id);
       await fetchDatasetDetail(updated.id);
-    } catch (err: any) {
-      setFormError(err.message || "Failed to update dataset.");
+    } catch (err: unknown) {
+      setFormError(getErrorMessage(err) || "Failed to update dataset.");
     } finally {
       setSubmittingDataset(false);
     }
@@ -263,8 +290,8 @@ export default function DatasetsManagementPage() {
       setShowDeleteDatasetModal(false);
       setSuccessMessage("Dataset deleted successfully.");
       await fetchDatasets();
-    } catch (err: any) {
-      setGlobalError(err.message || "Failed to delete dataset.");
+    } catch (err: unknown) {
+      setGlobalError(getErrorMessage(err) || "Failed to delete dataset.");
     } finally {
       setSubmittingDataset(false);
     }
@@ -291,11 +318,10 @@ export default function DatasetsManagementPage() {
     resetCaseForm();
     const nextNum = (selectedDatasetDetail?.test_cases?.length || 0) + 1;
     setCaseIdInput(`case_${String(nextNum).padStart(3, "0")}`);
-    setShowAddCaseModal(true);
+    dispatchCaseForm({ type: "openAdd" });
   };
 
   const handleOpenEditCase = (tc: TestCaseDetail) => {
-    setEditingCase(tc);
     setCaseIdInput(tc.case_identifier);
     setCaseQueryInput(tc.query);
     setCaseQueryTypeInput(tc.query_type || "factoid");
@@ -317,7 +343,7 @@ export default function DatasetsManagementPage() {
     }
 
     setCaseFormError(null);
-    setShowEditCaseModal(true);
+    dispatchCaseForm({ type: "openEdit", testCase: tc });
   };
 
   const buildEvidencePayload = (): EvidenceAnchor[] => {
@@ -338,7 +364,8 @@ export default function DatasetsManagementPage() {
 
   const handleSaveCase = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin || !selectedDatasetId) return;
+    const submitTarget = getCaseSubmitTarget(caseForm);
+    if (!isAdmin || !selectedDatasetId || !submitTarget) return;
 
     if (!caseIdInput.trim()) {
       setCaseFormError("Case identifier is required.");
@@ -360,7 +387,7 @@ export default function DatasetsManagementPage() {
     const evidence = buildEvidencePayload();
 
     try {
-      if (editingCase) {
+      if (submitTarget.kind === "update") {
         // Edit Case
         const payload: TestCaseUpdate = {
           case_identifier: caseIdInput.trim(),
@@ -371,9 +398,8 @@ export default function DatasetsManagementPage() {
           key_facts: keyFacts,
           ground_truth_evidence: evidence,
         };
-        await api.updateTestCase(selectedDatasetId, editingCase.id, payload);
-        setShowEditCaseModal(false);
-        setEditingCase(null);
+        await api.updateTestCase(selectedDatasetId, submitTarget.caseId, payload);
+        dispatchCaseForm({ type: "close" });
         setSuccessMessage(`Test case "${caseIdInput.trim()}" updated.`);
       } else {
         // Create Case
@@ -387,14 +413,14 @@ export default function DatasetsManagementPage() {
           ground_truth_evidence: evidence,
         };
         await api.addTestCase(selectedDatasetId, payload);
-        setShowAddCaseModal(false);
+        dispatchCaseForm({ type: "close" });
         setSuccessMessage(`Test case "${caseIdInput.trim()}" added.`);
       }
 
       await fetchDatasetDetail(selectedDatasetId);
       await fetchDatasets(selectedDatasetId);
-    } catch (err: any) {
-      setCaseFormError(err.message || "Failed to save test case.");
+    } catch (err: unknown) {
+      setCaseFormError(getErrorMessage(err) || "Failed to save test case.");
     } finally {
       setSubmittingCase(false);
     }
@@ -410,8 +436,8 @@ export default function DatasetsManagementPage() {
       setSuccessMessage("Test case deleted successfully.");
       await fetchDatasetDetail(selectedDatasetId);
       await fetchDatasets(selectedDatasetId);
-    } catch (err: any) {
-      setGlobalError(err.message || "Failed to delete test case.");
+    } catch (err: unknown) {
+      setGlobalError(getErrorMessage(err) || "Failed to delete test case.");
     } finally {
       setSubmittingCase(false);
     }
@@ -425,7 +451,7 @@ export default function DatasetsManagementPage() {
     if (!isAdmin || !selectedDatasetId) return;
 
     setImportError(null);
-    let parsed: any[];
+    let parsed: ImportedCase[];
     try {
       parsed = JSON.parse(importJsonText);
       if (!Array.isArray(parsed)) {
@@ -434,8 +460,8 @@ export default function DatasetsManagementPage() {
       if (parsed.length === 0) {
         throw new Error("JSON array cannot be empty.");
       }
-    } catch (err: any) {
-      setImportError(`Invalid JSON: ${err.message}`);
+    } catch (err: unknown) {
+      setImportError(`Invalid JSON: ${getErrorMessage(err)}`);
       return;
     }
 
@@ -472,986 +498,817 @@ export default function DatasetsManagementPage() {
       setSuccessMessage(`Successfully imported ${addedCount} test cases into dataset.`);
       await fetchDatasetDetail(selectedDatasetId);
       await fetchDatasets(selectedDatasetId);
-    } catch (err: any) {
-      setImportError(`Import stopped after ${addedCount} cases: ${err.message}`);
+    } catch (err: unknown) {
+      setImportError(`Import stopped after ${addedCount} cases: ${getErrorMessage(err)}`);
     } finally {
       setImporting(false);
       setImportProgress(null);
     }
   };
 
+  const openImport = () => {
+    setImportError(null);
+    setShowImportModal(true);
+  };
+
+  const closeDatasetForm = () => {
+    setShowCreateDatasetModal(false);
+    setShowEditDatasetModal(false);
+  };
+
+  const closeCaseForm = () => {
+    dispatchCaseForm({ type: "close" });
+  };
+
+  const closeDeleteCase = () => {
+    setShowDeleteCaseModal(false);
+    setCaseToDelete(null);
+  };
+
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans">
-      {/* Top Navigation Header */}
-      <header className="border-b border-slate-800/80 bg-[#0d131f] px-6 py-3.5 flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
-        <div className="flex items-center gap-4">
+    <AppShell>
+      <PageHeader
+        eyebrow={
           <Link
             href="/evaluations"
-            className="p-1.5 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-fg-subtle transition-colors hover:text-fg"
           >
-            <ArrowLeft className="w-4 h-4 text-slate-400" />
-            <span>Back to Evaluations</span>
+            <ArrowLeft className="size-3.5" />
+            Back to Evaluations
           </Link>
-          <div className="h-5 w-px bg-slate-800" />
-          <div>
-            <h1 className="text-base font-semibold text-white flex items-center gap-2">
-              <Layers className="w-4 h-4 text-indigo-400" />
-              Evaluation Datasets & Test Cases
-            </h1>
-            <p className="text-[11px] text-slate-400">
-              Create, view, and manage custom benchmark datasets for tenant RAG evaluation
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {org && (
-            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-slate-400">Tenant:</span>
-              <span className="font-semibold text-white">{org.name}</span>
-            </div>
-          )}
-
-          {isAdmin ? (
-            <button
-              onClick={handleOpenCreateDataset}
-              className="py-1.5 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+        }
+        title="Datasets & test cases"
+        description="Create and manage custom benchmark datasets for tenant-specific RAG evaluation."
+        actions={
+          <>
+            {!isAdmin && (
+              <Badge tone="warning" size="md">
+                <ShieldAlert />
+                Admin role required to manage datasets
+              </Badge>
+            )}
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              onClick={() => {
+                fetchDatasets();
+                if (selectedDatasetId) fetchDatasetDetail(selectedDatasetId);
+              }}
+              title="Refresh datasets"
+              aria-label="Refresh datasets"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Dataset</span>
-            </button>
-          ) : (
-            <div className="px-2.5 py-1 rounded-lg bg-slate-800/60 border border-slate-700/50 text-[11px] text-slate-400 flex items-center gap-1.5">
-              <Shield className="w-3 h-3 text-amber-400" />
-              <span>Admin role required to manage datasets</span>
-            </div>
-          )}
+              <RefreshCw className={cn((loadingDatasets || loadingDetail) && "animate-spin")} />
+            </Button>
+            {isAdmin && (
+              <Button variant="primary" onClick={handleOpenCreateDataset}>
+                <Plus />
+                Create Dataset
+              </Button>
+            )}
+          </>
+        }
+      />
 
-          <button
-            onClick={() => {
-              fetchDatasets();
-              if (selectedDatasetId) fetchDatasetDetail(selectedDatasetId);
-            }}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer border border-slate-700/60"
-            title="Refresh datasets"
-          >
-            <RefreshCw
-              className={`w-4 h-4 ${loadingDatasets || loadingDetail ? "animate-spin" : ""}`}
-            />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Workspace Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-4">
-        {/* Global Notifications */}
+      <div className="space-y-4">
         {globalError && (
-          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5 animate-in fade-in">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span className="flex-1">{globalError}</span>
-            <button onClick={() => setGlobalError(null)} className="text-rose-400 hover:text-rose-200">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <Alert tone="danger" onDismiss={() => setGlobalError(null)}>
+            {globalError}
+          </Alert>
         )}
 
         {successMessage && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="flex-1">{successMessage}</span>
-            <button onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-emerald-200">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <Alert tone="success" onDismiss={() => setSuccessMessage(null)}>
+            {successMessage}
+          </Alert>
         )}
 
-        {/* Master-Detail Split Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Datasets List (4 cols) */}
-          <div className="lg:col-span-4 space-y-3">
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-indigo-400" />
-                  <h2 className="text-xs font-semibold text-white uppercase tracking-wider">
-                    Custom Datasets ({datasets.length})
-                  </h2>
-                </div>
-                {isAdmin && (
-                  <button
-                    onClick={handleOpenCreateDataset}
-                    className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                    title="Add Dataset"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+          {/* Dataset list */}
+          <div className="space-y-4 lg:sticky lg:top-6 lg:col-span-4">
+            <Panel>
+              <PanelHeader
+                title="Custom datasets"
+                count={datasets.length}
+                icon={<Database />}
+                actions={
+                  isAdmin ? (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={handleOpenCreateDataset}
+                      title="Add Dataset"
+                      aria-label="Add dataset"
+                    >
+                      <Plus />
+                    </Button>
+                  ) : undefined
+                }
+                className="[&>div]:flex-row [&>div]:items-center [&>div]:justify-between"
+              />
 
               {loadingDatasets ? (
-                <div className="py-8 text-center text-slate-400 text-xs">
-                  <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-indigo-400" />
-                  Loading datasets...
-                </div>
+                <LoadingState label="Loading datasets…" />
               ) : datasets.length === 0 ? (
-                <div className="py-8 text-center space-y-3 border border-dashed border-slate-800 rounded-xl p-4">
-                  <Layers className="w-8 h-8 text-slate-600 mx-auto" />
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-slate-300">No Custom Datasets Yet</p>
-                    <p className="text-[11px] text-slate-500">
-                      Create a dataset to evaluate your tenant-specific documents and queries.
-                    </p>
-                  </div>
-                  {isAdmin && (
-                    <button
-                      onClick={handleOpenCreateDataset}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Create Dataset</span>
-                    </button>
-                  )}
-                </div>
+                <EmptyState
+                  icon={<Database />}
+                  title="No custom datasets yet"
+                  description="Create a dataset to evaluate your tenant-specific documents and queries."
+                  action={
+                    isAdmin && (
+                      <Button variant="primary" onClick={handleOpenCreateDataset}>
+                        <Plus />
+                        Create Dataset
+                      </Button>
+                    )
+                  }
+                  className="py-10"
+                />
               ) : (
-                <div className="space-y-2 max-h-[calc(100vh-250px)] overflow-y-auto pr-1">
+                <ul className="max-h-[calc(100vh-320px)] space-y-px overflow-y-auto p-1.5">
                   {datasets.map((ds) => {
                     const isSelected = ds.id === selectedDatasetId;
                     return (
-                      <div
-                        key={ds.id}
-                        onClick={() => setSelectedDatasetId(ds.id)}
-                        className={`p-3.5 rounded-xl border transition-all cursor-pointer relative group ${
-                          isSelected
-                            ? "bg-indigo-950/40 border-indigo-500/60 shadow-sm"
-                            : "bg-slate-900/40 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`text-xs font-semibold truncate ${
-                                  isSelected ? "text-indigo-200" : "text-white"
-                                }`}
-                              >
-                                {ds.name}
-                              </span>
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                                v{ds.version}
-                              </span>
-                            </div>
-                            {ds.description && (
-                              <p className="text-[11px] text-slate-400 line-clamp-2">
-                                {ds.description}
-                              </p>
-                            )}
-                          </div>
-                          <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-slate-800/90 text-slate-300 border border-slate-700 shrink-0">
-                            {ds.test_case_count} cases
-                          </span>
-                        </div>
-
-                        <div className="mt-2.5 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-500">
-                          <span>Updated {formatDate(ds.updated_at)}</span>
-                          {isSelected && (
-                            <span className="text-indigo-400 font-medium flex items-center gap-1">
-                              Active <ChevronRight className="w-3 h-3" />
-                            </span>
+                      <li key={ds.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDatasetId(ds.id)}
+                          aria-current={isSelected ? "true" : undefined}
+                          className={cn(
+                            "relative w-full rounded-md px-3 py-2.5 text-left transition-colors cursor-pointer",
+                            isSelected ? "bg-surface-3" : "hover:bg-surface-2"
                           )}
-                        </div>
-                      </div>
+                        >
+                          {isSelected && (
+                            <span className="absolute inset-y-2.5 left-0 w-0.5 rounded-full bg-accent" aria-hidden />
+                          )}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    "truncate text-[13px] font-medium",
+                                    isSelected ? "text-fg" : "text-fg-muted"
+                                  )}
+                                >
+                                  {ds.name}
+                                </span>
+                                <span className="shrink-0 font-mono text-[11px] text-fg-faint">
+                                  v{ds.version}
+                                </span>
+                              </div>
+                              {ds.description && (
+                                <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-fg-subtle">
+                                  {ds.description}
+                                </p>
+                              )}
+                              <p className="mt-1.5 text-[11px] text-fg-faint">
+                                Updated {formatDate(ds.updated_at)}
+                              </p>
+                            </div>
+                            <span className="tabular shrink-0 rounded-[5px] border border-line-strong bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-fg-muted">
+                              {ds.test_case_count} cases
+                            </span>
+                          </div>
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
-            </div>
+            </Panel>
 
-            {/* Benchmark Info Card */}
-            <div className="p-3.5 rounded-xl bg-slate-900/30 border border-slate-800/80 text-xs space-y-2">
-              <div className="flex items-center gap-2 text-indigo-400 font-semibold text-[11px] uppercase tracking-wider">
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Golden Benchmark</span>
+            <div className="rounded-lg border border-line px-4 py-3.5">
+              <div className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-fg">
+                <BookOpen className="size-3.5 text-accent" />
+                Golden benchmark
               </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                The built-in <code className="text-slate-300 font-mono">golden_dataset.json</code> (50 cases) is always available across the platform as a baseline reference. Custom datasets let you add proprietary cases and ground-truth anchors.
+              <p className="text-xs leading-relaxed text-fg-subtle">
+                The built-in <code className="font-mono text-fg-muted">golden_dataset.json</code> (50
+                cases) is always available as a baseline reference. Custom datasets add proprietary
+                cases and ground-truth anchors.
               </p>
             </div>
           </div>
 
-          {/* Right Column: Selected Dataset Workspace (8 cols) */}
-          <div className="lg:col-span-8 space-y-4">
+          {/* Selected dataset workspace */}
+          <div className="min-w-0 lg:col-span-8">
             {!selectedDatasetDetail ? (
-              <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-12 text-center text-slate-400 space-y-3">
-                <Layers className="w-10 h-10 mx-auto text-slate-600" />
-                <p className="text-sm font-medium text-slate-300">No Dataset Selected</p>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Select a dataset from the left panel to inspect its test cases or create a new dataset.
-                </p>
-              </div>
+              <Panel>
+                {loadingDetail ? (
+                  <LoadingState label="Loading dataset…" className="py-24" />
+                ) : (
+                  <EmptyState
+                    icon={<Database />}
+                    title="No dataset selected"
+                    description="Select a dataset from the list to inspect its test cases, or create a new dataset."
+                    className="py-24"
+                  />
+                )}
+              </Panel>
             ) : (
-              <>
-                {/* Dataset Header / Action Card */}
-                <div className="p-5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <h2 className="text-lg font-bold text-white tracking-tight">
+              <Panel>
+                {/* Dataset header */}
+                <div className="border-b border-line px-4 py-4 sm:px-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-semibold tracking-tight text-fg">
                           {selectedDatasetDetail.name}
                         </h2>
-                        <span className="text-xs font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+                        <Badge tone="accent" mono>
                           v{selectedDatasetDetail.version}
-                        </span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                        </Badge>
+                        <Badge tone="neutral">
                           {selectedDatasetDetail.test_cases?.length || 0} Test Cases
-                        </span>
+                        </Badge>
                       </div>
                       {selectedDatasetDetail.description && (
-                        <p className="text-xs text-slate-300">
+                        <p className="text-[13px] leading-relaxed text-fg-subtle">
                           {selectedDatasetDetail.description}
                         </p>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                      <Link
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <ButtonLink
                         href={`/evaluations`}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                        variant="secondary"
                         title="Run an evaluation benchmark with this dataset"
                       >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Run Evaluation</span>
-                      </Link>
-
+                        <Play className="fill-current" />
+                        Run Evaluation
+                      </ButtonLink>
                       {isAdmin && (
                         <>
-                          <button
+                          <Button
+                            variant="secondary"
+                            size="icon-sm"
                             onClick={handleOpenEditDataset}
-                            className="p-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                             title="Edit Dataset Details"
+                            aria-label="Edit dataset details"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span>Edit</span>
-                          </button>
-                          <button
+                            <Pencil />
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="icon-sm"
                             onClick={() => setShowDeleteDatasetModal(true)}
-                            className="p-1.5 px-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 transition-colors text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                             title="Delete Dataset"
+                            aria-label="Delete dataset"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Delete</span>
-                          </button>
+                            <Trash2 />
+                          </Button>
                         </>
                       )}
                     </div>
                   </div>
 
-                  {/* Test Cases Sub-Header & Action Bar */}
-                  <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 flex-1 max-w-lg">
-                      <div className="relative flex-1">
-                        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
-                        <input
-                          type="text"
-                          placeholder="Search test cases by query or ID..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
-
-                      <select
+                  {/* Toolbar */}
+                  <div className="mt-4 flex flex-col gap-2 xl:flex-row xl:items-center">
+                    <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+                      <IconInput
+                        icon={Search}
+                        type="text"
+                        aria-label="Search test cases"
+                        placeholder="Search by query, ID or answer..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="h-8 text-[13px]"
+                        wrapperClassName="flex-1 min-w-0"
+                      />
+                      <Select
+                        aria-label="Filter by query type"
                         value={queryTypeFilter}
                         onChange={(e) => setQueryTypeFilter(e.target.value)}
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                        className="h-8 text-[13px]"
                       >
                         <option value="all">All Query Types</option>
-                        <option value="factoid">Factoid</option>
-                        <option value="multi_hop">Multi-Hop</option>
-                        <option value="coreference">Coreference</option>
-                        <option value="refusal">Refusal</option>
-                        <option value="citation_needed">Citation Needed</option>
-                        <option value="temporal">Temporal</option>
-                        <option value="comparative">Comparative</option>
-                        <option value="summarization">Summarization</option>
-                      </select>
-
-                      <select
+                        {QUERY_TYPE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </Select>
+                      <Select
+                        aria-label="Filter by expected behavior"
                         value={behaviorFilter}
                         onChange={(e) => setBehaviorFilter(e.target.value)}
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                        className="h-8 text-[13px]"
                       >
                         <option value="all">All Behaviors</option>
                         <option value="answer">Answer</option>
                         <option value="refusal">Refusal</option>
-                      </select>
+                      </Select>
                     </div>
 
                     {isAdmin && (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => {
-                            setImportError(null);
-                            setShowImportModal(true);
-                          }}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                          title="Import cases from JSON"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>Import JSON</span>
-                        </button>
-                        <button
-                          onClick={handleOpenAddCase}
-                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Case</span>
-                        </button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button variant="secondary" onClick={openImport} title="Import cases from JSON">
+                          <Upload />
+                          Import JSON
+                        </Button>
+                        <Button variant="primary" onClick={handleOpenAddCase}>
+                          <Plus />
+                          Add Case
+                        </Button>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Test Cases List */}
-                <div className="space-y-3">
-                  {loadingDetail ? (
-                    <div className="py-12 text-center text-slate-400 text-xs">
-                      <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-indigo-400" />
-                      Loading test cases...
-                    </div>
-                  ) : filteredCases.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-800 p-10 text-center space-y-3">
-                      <FileText className="w-8 h-8 text-slate-600 mx-auto" />
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-slate-300">
-                          {selectedDatasetDetail.test_cases?.length === 0
-                            ? "This dataset has no test cases yet."
-                            : "No test cases match your search filters."}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          Add test cases with expected answers and semantic anchors to evaluate retrieval quality.
-                        </p>
-                      </div>
-                      {isAdmin && selectedDatasetDetail.test_cases?.length === 0 && (
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={handleOpenAddCase}
-                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Add First Case</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setImportError(null);
-                              setShowImportModal(true);
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                          >
-                            <Upload className="w-3.5 h-3.5 text-indigo-400" />
-                            <span>Import JSON</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {filteredCases.map((tc) => {
-                        const isExpanded = expandedCaseId === tc.id;
-                        return (
-                          <div
-                            key={tc.id}
-                            className="rounded-xl border border-slate-800/80 bg-slate-900/50 hover:border-slate-700/80 transition-all overflow-hidden"
-                          >
-                            {/* Card Header Row */}
-                            <div className="p-3.5 flex items-start justify-between gap-3">
-                              <div
-                                onClick={() => setExpandedCaseId(isExpanded ? null : tc.id)}
-                                className="flex-1 cursor-pointer space-y-1.5"
-                              >
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-950 text-indigo-300 border border-slate-800">
-                                    {tc.case_identifier}
-                                  </span>
-
-                                  <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                                    {tc.query_type}
-                                  </span>
-
-                                  <span
-                                    className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded border ${
-                                      tc.expected_behavior === "refusal"
-                                        ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
-                                        : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                                    }`}
-                                  >
-                                    {tc.expected_behavior}
-                                  </span>
-
-                                  {tc.key_facts && tc.key_facts.length > 0 && (
-                                    <span className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded">
-                                      {tc.key_facts.length} facts
-                                    </span>
-                                  )}
-
-                                  {tc.ground_truth_evidence && tc.ground_truth_evidence.length > 0 && (
-                                    <span className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded">
-                                      {tc.ground_truth_evidence.length} evidence anchors
-                                    </span>
-                                  )}
-                                </div>
-
-                                <p className="text-xs font-medium text-white pt-1">
-                                  {tc.query}
-                                </p>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-                                {isAdmin && (
-                                  <>
-                                    <button
-                                      onClick={() => handleOpenEditCase(tc)}
-                                      className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                                      title="Edit Test Case"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setCaseToDelete(tc);
-                                        setShowDeleteCaseModal(true);
-                                      }}
-                                      className="p-1 rounded text-rose-400 hover:text-rose-200 hover:bg-rose-500/10"
-                                      title="Delete Test Case"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </>
-                                )}
-                                <button
-                                  onClick={() => setExpandedCaseId(isExpanded ? null : tc.id)}
-                                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                                  title={isExpanded ? "Collapse" : "Expand"}
-                                >
-                                  {isExpanded ? (
-                                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                                  ) : (
-                                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Expanded Details Drawer */}
-                            {isExpanded && (
-                              <div className="px-3.5 pb-4 pt-2 border-t border-slate-800/80 bg-slate-950/40 space-y-3 text-xs">
-                                {tc.ground_truth_answer && (
-                                  <div className="space-y-1">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                                      Ground Truth Answer
-                                    </span>
-                                    <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-                                      {tc.ground_truth_answer}
-                                    </div>
-                                  </div>
-                                )}
-
+                {/* Test cases */}
+                {loadingDetail ? (
+                  <LoadingState label="Loading test cases…" />
+                ) : filteredCases.length === 0 ? (
+                  <EmptyState
+                    icon={<FileText />}
+                    title={
+                      selectedDatasetDetail.test_cases?.length === 0
+                        ? "This dataset has no test cases yet."
+                        : "No test cases match your search filters."
+                    }
+                    description="Add test cases with expected answers and semantic anchors to evaluate retrieval quality."
+                    action={
+                      isAdmin &&
+                      selectedDatasetDetail.test_cases?.length === 0 && (
+                        <>
+                          <Button variant="primary" onClick={handleOpenAddCase}>
+                            <Plus />
+                            Add First Case
+                          </Button>
+                          <Button variant="secondary" onClick={openImport}>
+                            <Upload />
+                            Import JSON
+                          </Button>
+                        </>
+                      )
+                    }
+                  />
+                ) : (
+                  <ul className="divide-y divide-line">
+                    {filteredCases.map((tc) => {
+                      const isExpanded = expandedCaseId === tc.id;
+                      const detailId = `case-detail-${tc.id}`;
+                      return (
+                        <li key={tc.id} className={cn(isExpanded && "bg-surface-2/40")}>
+                          <div className="flex items-start gap-3 px-4 py-3 sm:px-5">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedCaseId(isExpanded ? null : tc.id)}
+                              aria-expanded={isExpanded}
+                              aria-controls={detailId}
+                              className="group min-w-0 flex-1 space-y-1.5 text-left cursor-pointer"
+                            >
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono text-xs font-medium text-accent-strong">
+                                  {tc.case_identifier}
+                                </span>
+                                <Badge tone="deterministic" mono>
+                                  {tc.query_type}
+                                </Badge>
+                                <Badge tone={tc.expected_behavior === "refusal" ? "danger" : "success"}>
+                                  {tc.expected_behavior}
+                                </Badge>
                                 {tc.key_facts && tc.key_facts.length > 0 && (
-                                  <div className="space-y-1">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                                      Key Facts to Verify
-                                    </span>
-                                    <ul className="list-disc list-inside space-y-0.5 text-slate-300 text-[11px]">
-                                      {tc.key_facts.map((fact, idx) => (
-                                        <li key={idx}>{fact}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
+                                  <span className="text-[11px] text-fg-subtle">
+                                    · {tc.key_facts.length} facts
+                                  </span>
                                 )}
-
                                 {tc.ground_truth_evidence && tc.ground_truth_evidence.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                                      Evidence Anchors
-                                    </span>
-                                    <div className="space-y-1.5">
-                                      {tc.ground_truth_evidence.map((ev, idx) => (
-                                        <div
-                                          key={idx}
-                                          className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-[11px] space-y-1"
-                                        >
-                                          <div className="flex items-center justify-between text-slate-400">
-                                            <span className="font-semibold text-white">
-                                              {ev.document_title}
-                                            </span>
-                                            <div className="flex items-center gap-2">
-                                              {ev.page_number && (
-                                                <span>Page {ev.page_number}</span>
-                                              )}
-                                              {ev.section_heading && (
-                                                <span>Section: {ev.section_heading}</span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          {ev.content_anchors && ev.content_anchors.length > 0 && (
-                                            <div className="space-y-0.5 pt-1">
-                                              {ev.content_anchors.map((anchor, aIdx) => (
-                                                <div
-                                                  key={aIdx}
-                                                  className="font-mono text-[10px] text-cyan-300/90 bg-cyan-950/20 px-2 py-0.5 rounded border border-cyan-500/20"
-                                                >
-                                                  "{anchor}"
-                                                </div>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
+                                  <span className="text-[11px] text-fg-subtle">
+                                    · {tc.ground_truth_evidence.length} evidence anchors
+                                  </span>
                                 )}
                               </div>
-                            )}
+                              <p className="text-[13px] leading-relaxed text-fg group-hover:text-white">
+                                {tc.query}
+                              </p>
+                            </button>
+
+                            <div className="flex shrink-0 items-center gap-0.5">
+                              {isAdmin && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => handleOpenEditCase(tc)}
+                                    title="Edit Test Case"
+                                    aria-label={`Edit test case ${tc.case_identifier}`}
+                                  >
+                                    <Pencil />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => {
+                                      setCaseToDelete(tc);
+                                      setShowDeleteCaseModal(true);
+                                    }}
+                                    className="hover:bg-danger/10 hover:text-danger"
+                                    title="Delete Test Case"
+                                    aria-label={`Delete test case ${tc.case_identifier}`}
+                                  >
+                                    <Trash2 />
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                onClick={() => setExpandedCaseId(isExpanded ? null : tc.id)}
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                                aria-expanded={isExpanded}
+                                aria-controls={detailId}
+                              >
+                                <ChevronDown
+                                  className={cn("transition-transform duration-200", isExpanded && "rotate-180")}
+                                />
+                              </Button>
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </>
+
+                          {isExpanded && (
+                            <div
+                              id={detailId}
+                              className="space-y-4 px-4 pb-4 animate-fade-in sm:px-5"
+                            >
+                              {tc.ground_truth_answer && (
+                                <div className="space-y-1.5">
+                                  <Eyebrow>Ground truth answer</Eyebrow>
+                                  <div className="whitespace-pre-wrap rounded-md border border-line bg-canvas/60 px-3.5 py-2.5 text-[13px] leading-relaxed text-fg/90">
+                                    {tc.ground_truth_answer}
+                                  </div>
+                                </div>
+                              )}
+
+                              {tc.key_facts && tc.key_facts.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <Eyebrow>Key facts to verify</Eyebrow>
+                                  <ul className="space-y-1">
+                                    {tc.key_facts.map((fact, idx) => (
+                                      <li key={idx} className="flex gap-2.5 text-[13px] text-fg-muted">
+                                        <span className="mt-[0.6em] size-1 shrink-0 rounded-full bg-fg-subtle" aria-hidden />
+                                        {fact}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {tc.ground_truth_evidence && tc.ground_truth_evidence.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <Eyebrow>Evidence anchors</Eyebrow>
+                                  <div className="space-y-2">
+                                    {tc.ground_truth_evidence.map((ev, idx) => (
+                                      <div
+                                        key={idx}
+                                        className="rounded-md border border-line bg-canvas/60 px-3.5 py-2.5"
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                          <span className="font-medium text-fg">{ev.document_title}</span>
+                                          <span className="flex items-center gap-3 text-fg-subtle">
+                                            {ev.page_number && <span className="font-mono">p. {ev.page_number}</span>}
+                                            {ev.section_heading && <span>Section: {ev.section_heading}</span>}
+                                          </span>
+                                        </div>
+                                        {ev.content_anchors && ev.content_anchors.length > 0 && (
+                                          <div className="mt-2 space-y-1">
+                                            {ev.content_anchors.map((anchor, aIdx) => (
+                                              <div
+                                                key={aIdx}
+                                                className="border-l-2 border-judge-det/50 bg-judge-det/[0.05] px-2.5 py-1 font-mono text-[11px] text-judge-det"
+                                              >
+                                                &ldquo;{anchor}&rdquo;
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Panel>
             )}
           </div>
         </div>
-      </main>
+      </div>
 
-      {/* ========================================================================= */}
-      {/* CREATE / EDIT DATASET MODAL                                               */}
-      {/* ========================================================================= */}
+      {/* Create / edit dataset */}
       {(showCreateDatasetModal || showEditDatasetModal) && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0e1422] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <Database className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-sm font-semibold text-white">
-                  {showCreateDatasetModal ? "Create Evaluation Dataset" : "Edit Dataset Details"}
-                </h3>
-              </div>
-              <button
-                onClick={() => {
-                  setShowCreateDatasetModal(false);
-                  setShowEditDatasetModal(false);
-                }}
-                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+        <Dialog
+          onClose={closeDatasetForm}
+          icon={<Database />}
+          title={showCreateDatasetModal ? "Create Evaluation Dataset" : "Edit Dataset Details"}
+          footer={
+            <>
+              <Button variant="ghost" onClick={closeDatasetForm} disabled={submittingDataset}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="dataset-form"
+                variant="primary"
+                disabled={submittingDataset}
+                loading={submittingDataset}
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+                {submittingDataset
+                  ? "Saving..."
+                  : showCreateDatasetModal
+                  ? "Create Dataset"
+                  : "Save Changes"}
+              </Button>
+            </>
+          }
+        >
+          <form
+            id="dataset-form"
+            onSubmit={showCreateDatasetModal ? handleCreateDataset : handleUpdateDataset}
+            className="space-y-4"
+          >
+            {formError && <Alert tone="danger">{formError}</Alert>}
 
-            {formError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
+            <Field label="Dataset name" htmlFor="ds-name" required>
+              <Input
+                id="ds-name"
+                type="text"
+                placeholder="e.g. legal-contracts-eval"
+                value={datasetFormName}
+                onChange={(e) => setDatasetFormName(e.target.value)}
+                required
+              />
+            </Field>
 
-            <form
-              onSubmit={showCreateDatasetModal ? handleCreateDataset : handleUpdateDataset}
-              className="space-y-3.5"
-            >
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Dataset Name <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. legal-contracts-eval"
-                  value={datasetFormName}
-                  onChange={(e) => setDatasetFormName(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-                  required
-                />
-              </div>
+            <Field label="Version" htmlFor="ds-version">
+              <Input
+                id="ds-version"
+                type="text"
+                placeholder="1.0.0"
+                value={datasetFormVersion}
+                onChange={(e) => setDatasetFormVersion(e.target.value)}
+                className="font-mono"
+              />
+            </Field>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Version
-                </label>
-                <input
-                  type="text"
-                  placeholder="1.0.0"
-                  value={datasetFormVersion}
-                  onChange={(e) => setDatasetFormVersion(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 placeholder-slate-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Description
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Describe the domain, cases, or intended scope..."
-                  value={datasetFormDesc}
-                  onChange={(e) => setDatasetFormDesc(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 placeholder-slate-500 resize-none"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateDatasetModal(false);
-                    setShowEditDatasetModal(false);
-                  }}
-                  disabled={submittingDataset}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingDataset}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
-                >
-                  {submittingDataset ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <span>{showCreateDatasetModal ? "Create Dataset" : "Save Changes"}</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <Field label="Description" htmlFor="ds-desc">
+              <Textarea
+                id="ds-desc"
+                rows={3}
+                placeholder="Describe the domain, cases, or intended scope..."
+                value={datasetFormDesc}
+                onChange={(e) => setDatasetFormDesc(e.target.value)}
+              />
+            </Field>
+          </form>
+        </Dialog>
       )}
 
-      {/* ========================================================================= */}
-      {/* DELETE DATASET CONFIRMATION MODAL                                         */}
-      {/* ========================================================================= */}
+      {/* Delete dataset */}
       {showDeleteDatasetModal && selectedDatasetDetail && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0e1422] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-2.5 text-rose-400">
-              <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
-                <Trash2 className="w-4 h-4" />
-              </div>
-              <h3 className="text-sm font-semibold text-white">Delete Dataset</h3>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Are you sure you want to delete dataset{" "}
-              <strong className="text-white font-semibold">{selectedDatasetDetail.name}</strong>?
-              This will remove all {selectedDatasetDetail.test_cases?.length || 0} associated test cases.
-            </p>
-
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
-              <Info className="w-3.5 h-3.5 inline mr-1 text-indigo-400" />
-              Past evaluation runs referencing this dataset will be safely preserved.
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-2.5">
-              <button
+        <Dialog
+          onClose={() => setShowDeleteDatasetModal(false)}
+          icon={<Trash2 className="text-danger" />}
+          title="Delete Dataset"
+          footer={
+            <>
+              <Button
+                variant="ghost"
                 onClick={() => setShowDeleteDatasetModal(false)}
                 disabled={submittingDataset}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger-solid"
                 onClick={handleDeleteDataset}
                 disabled={submittingDataset}
-                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                loading={submittingDataset}
               >
-                {submittingDataset ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <span>Delete Dataset</span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+                {submittingDataset ? "Deleting..." : "Delete Dataset"}
+              </Button>
+            </>
+          }
+          bodyClassName="space-y-4"
+        >
+          <p className="text-sm leading-relaxed text-fg-muted">
+            Are you sure you want to delete dataset{" "}
+            <strong className="font-semibold text-fg">{selectedDatasetDetail.name}</strong>? This will
+            remove all {selectedDatasetDetail.test_cases?.length || 0} associated test cases.
+          </p>
+          <Alert tone="info" icon={<Info />}>
+            Past evaluation runs referencing this dataset will be safely preserved.
+          </Alert>
+        </Dialog>
       )}
 
-      {/* ========================================================================= */}
-      {/* ADD / EDIT TEST CASE MODAL                                                */}
-      {/* ========================================================================= */}
+      {/* Add / edit test case */}
       {(showAddCaseModal || showEditCaseModal) && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0e1422] border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative space-y-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-sm font-semibold text-white">
-                  {showAddCaseModal ? "Add Test Case" : `Edit Case: ${editingCase?.case_identifier}`}
-                </h3>
-              </div>
-              <button
-                onClick={() => {
-                  setShowAddCaseModal(false);
-                  setShowEditCaseModal(false);
-                }}
-                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+        <Dialog
+          onClose={closeCaseForm}
+          size="lg"
+          icon={<FileText />}
+          title={
+            showAddCaseModal ? (
+              "Add Test Case"
+            ) : (
+              <>
+                Edit Case: <span className="font-mono">{editingCase?.case_identifier}</span>
+              </>
+            )
+          }
+          footer={
+            <>
+              <Button variant="ghost" onClick={closeCaseForm} disabled={submittingCase}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="test-case-form"
+                variant="primary"
+                disabled={submittingCase}
+                loading={submittingCase}
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+                {submittingCase ? "Saving..." : "Save Test Case"}
+              </Button>
+            </>
+          }
+        >
+          <form id="test-case-form" onSubmit={handleSaveCase} className="space-y-4">
+            {caseFormError && <Alert tone="danger">{caseFormError}</Alert>}
 
-            {caseFormError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 shrink-0">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{caseFormError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveCase} className="flex-1 overflow-y-auto space-y-3.5 pr-1">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Identifier <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="case_001"
-                    value={caseIdInput}
-                    onChange={(e) => setCaseIdInput(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Query Type
-                  </label>
-                  <select
-                    value={caseQueryTypeInput}
-                    onChange={(e) => setCaseQueryTypeInput(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="factoid">Factoid</option>
-                    <option value="multi_hop">Multi-Hop</option>
-                    <option value="coreference">Coreference</option>
-                    <option value="refusal">Refusal</option>
-                    <option value="citation_needed">Citation Needed</option>
-                    <option value="temporal">Temporal</option>
-                    <option value="comparative">Comparative</option>
-                    <option value="summarization">Summarization</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Expected Behavior
-                  </label>
-                  <select
-                    value={caseBehaviorInput}
-                    onChange={(e) => setCaseBehaviorInput(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="answer">Answer (Accurate)</option>
-                    <option value="refusal">Refusal (Adversarial/OOD)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Query / Question <span className="text-rose-400">*</span>
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Enter the benchmark query to evaluate..."
-                  value={caseQueryInput}
-                  onChange={(e) => setCaseQueryInput(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 resize-none"
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Identifier" htmlFor="tc-id" required>
+                <Input
+                  id="tc-id"
+                  type="text"
+                  placeholder="case_001"
+                  value={caseIdInput}
+                  onChange={(e) => setCaseIdInput(e.target.value)}
+                  className="font-mono text-[13px]"
                   required
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Ground Truth Answer
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Expected answer for correctness & faithfulness scoring..."
-                  value={caseGroundTruthInput}
-                  onChange={(e) => setCaseGroundTruthInput(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 resize-none font-sans"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Key Facts to Check (one per line)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Fact 1&#10;Fact 2"
-                  value={caseKeyFactsInput}
-                  onChange={(e) => setCaseKeyFactsInput(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 resize-none font-mono text-[11px]"
-                />
-              </div>
-
-              {/* Evidence Anchor Sub-section */}
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
-                <span className="text-[11px] font-semibold text-slate-300 block">
-                  Ground Truth Evidence Anchor (Optional)
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <input
-                      type="text"
-                      placeholder="Document title (e.g. policy.pdf)"
-                      value={evidenceDocTitle}
-                      onChange={(e) => setEvidenceDocTitle(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="Page (e.g. 1)"
-                      value={evidencePageNum}
-                      onChange={(e) => setEvidencePageNum(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <textarea
-                    rows={2}
-                    placeholder="Content anchors / exact quotes to match (one per line)..."
-                    value={evidenceAnchorsInput}
-                    onChange={(e) => setEvidenceAnchorsInput(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none font-mono text-[11px]"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddCaseModal(false);
-                    setShowEditCaseModal(false);
-                  }}
-                  disabled={submittingCase}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+              </Field>
+              <Field label="Query type" htmlFor="tc-type">
+                <Select
+                  id="tc-type"
+                  value={caseQueryTypeInput}
+                  onChange={(e) => setCaseQueryTypeInput(e.target.value)}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingCase}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 cursor-pointer"
+                  {QUERY_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Expected behavior" htmlFor="tc-behavior">
+                <Select
+                  id="tc-behavior"
+                  value={caseBehaviorInput}
+                  onChange={(e) => setCaseBehaviorInput(e.target.value)}
                 >
-                  {submittingCase ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <span>Save Test Case</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* DELETE TEST CASE CONFIRMATION MODAL                                       */}
-      {/* ========================================================================= */}
-      {showDeleteCaseModal && caseToDelete && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0e1422] border border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-2.5 text-rose-400">
-              <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
-                <Trash2 className="w-4 h-4" />
-              </div>
-              <h3 className="text-sm font-semibold text-white">Delete Test Case</h3>
+                  <option value="answer">Answer (Accurate)</option>
+                  <option value="refusal">Refusal (Adversarial/OOD)</option>
+                </Select>
+              </Field>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Are you sure you want to delete test case{" "}
-              <strong className="text-white font-mono">{caseToDelete.case_identifier}</strong>?
-            </p>
+            <Field label="Query / question" htmlFor="tc-query" required>
+              <Textarea
+                id="tc-query"
+                rows={2}
+                placeholder="Enter the benchmark query to evaluate..."
+                value={caseQueryInput}
+                onChange={(e) => setCaseQueryInput(e.target.value)}
+                required
+              />
+            </Field>
 
-            <div className="pt-2 flex items-center justify-end gap-2.5">
-              <button
-                onClick={() => {
-                  setShowDeleteCaseModal(false);
-                  setCaseToDelete(null);
-                }}
-                disabled={submittingCase}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
-              >
+            <Field label="Ground truth answer" htmlFor="tc-answer">
+              <Textarea
+                id="tc-answer"
+                rows={2}
+                placeholder="Expected answer for correctness & faithfulness scoring..."
+                value={caseGroundTruthInput}
+                onChange={(e) => setCaseGroundTruthInput(e.target.value)}
+              />
+            </Field>
+
+            <Field label="Key facts to check" htmlFor="tc-facts" hint="One fact per line.">
+              <Textarea
+                id="tc-facts"
+                rows={2}
+                placeholder={"Fact 1\nFact 2"}
+                value={caseKeyFactsInput}
+                onChange={(e) => setCaseKeyFactsInput(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </Field>
+
+            <fieldset className="space-y-3 rounded-lg border border-line bg-surface-2/60 p-3.5">
+              <legend className="px-1 text-[13px] font-medium text-fg-muted">
+                Ground truth evidence anchor <span className="font-normal text-fg-subtle">(optional)</span>
+              </legend>
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  type="text"
+                  aria-label="Evidence document title"
+                  placeholder="Document title (e.g. policy.pdf)"
+                  value={evidenceDocTitle}
+                  onChange={(e) => setEvidenceDocTitle(e.target.value)}
+                  className="col-span-2 h-8 text-[13px]"
+                />
+                <Input
+                  type="text"
+                  aria-label="Evidence page number"
+                  placeholder="Page (e.g. 1)"
+                  value={evidencePageNum}
+                  onChange={(e) => setEvidencePageNum(e.target.value)}
+                  className="h-8 font-mono text-[13px]"
+                />
+              </div>
+              <Textarea
+                rows={2}
+                aria-label="Evidence content anchors"
+                placeholder="Content anchors / exact quotes to match (one per line)..."
+                value={evidenceAnchorsInput}
+                onChange={(e) => setEvidenceAnchorsInput(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </fieldset>
+          </form>
+        </Dialog>
+      )}
+
+      {/* Delete test case */}
+      {showDeleteCaseModal && caseToDelete && (
+        <Dialog
+          onClose={closeDeleteCase}
+          size="sm"
+          icon={<Trash2 className="text-danger" />}
+          title="Delete Test Case"
+          footer={
+            <>
+              <Button variant="ghost" onClick={closeDeleteCase} disabled={submittingCase}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger-solid"
                 onClick={handleDeleteCase}
                 disabled={submittingCase}
-                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                loading={submittingCase}
               >
-                {submittingCase ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <span>Delete Case</span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+                {submittingCase ? "Deleting..." : "Delete Case"}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm leading-relaxed text-fg-muted">
+            Are you sure you want to delete test case{" "}
+            <strong className="font-mono font-medium text-fg">{caseToDelete.case_identifier}</strong>?
+          </p>
+        </Dialog>
       )}
 
-      {/* ========================================================================= */}
-      {/* IMPORT TEST CASES JSON MODAL                                              */}
-      {/* ========================================================================= */}
+      {/* Import JSON */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0e1422] border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative space-y-4 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-2">
-                <Upload className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-sm font-semibold text-white">Import Test Cases from JSON</h3>
-              </div>
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+        <Dialog
+          onClose={() => setShowImportModal(false)}
+          size="lg"
+          icon={<FileJson />}
+          title="Import Test Cases from JSON"
+          description="Paste an array of test cases. The schema matches the benchmark format."
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setShowImportModal(false)} disabled={importing}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="import-json-form"
+                variant="primary"
+                disabled={importing}
+                loading={importing}
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+                {importing ? "Importing..." : "Import Cases"}
+              </Button>
+            </>
+          }
+        >
+          <form id="import-json-form" onSubmit={handleImportJson} className="space-y-4">
+            {importError && <Alert tone="danger">{importError}</Alert>}
 
-            {importError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 shrink-0">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{importError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleImportJson} className="flex-1 overflow-y-auto space-y-3 pr-1">
-              <p className="text-xs text-slate-400">
-                Paste an array of test cases formatted as JSON. Supported schema matches the benchmark format:
-              </p>
-
-              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[10px] text-slate-400">
+            <div className="space-y-1.5">
+              <Eyebrow>Example</Eyebrow>
+              <pre className="overflow-x-auto rounded-md border border-line bg-canvas px-3.5 py-3 font-mono text-[11px] leading-relaxed text-fg-subtle">
                 {`[
   {
     "case_identifier": "case_001",
@@ -1462,56 +1319,30 @@ export default function DatasetsManagementPage() {
     "key_facts": ["30 days"]
   }
 ]`}
-              </div>
+              </pre>
+            </div>
 
-              <div>
-                <textarea
-                  rows={8}
-                  placeholder="Paste JSON array here..."
-                  value={importJsonText}
-                  onChange={(e) => setImportJsonText(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none"
-                  required
-                />
-              </div>
+            <Field label="JSON array" htmlFor="import-json">
+              <Textarea
+                id="import-json"
+                rows={8}
+                placeholder="Paste JSON array here..."
+                value={importJsonText}
+                onChange={(e) => setImportJsonText(e.target.value)}
+                className="font-mono text-xs"
+                spellCheck={false}
+                required
+              />
+            </Field>
 
-              {importProgress && (
-                <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-xs text-indigo-300 flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-indigo-400" />
-                  <span>
-                    Importing case {importProgress.current} of {importProgress.total}...
-                  </span>
-                </div>
-              )}
-
-              <div className="pt-2 flex items-center justify-end gap-2.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(false)}
-                  disabled={importing}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={importing}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 cursor-pointer"
-                >
-                  {importing ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Importing...</span>
-                    </>
-                  ) : (
-                    <span>Import Cases</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            {importProgress && (
+              <Alert tone="info" icon={<Spinner />}>
+                Importing case {importProgress.current} of {importProgress.total}...
+              </Alert>
+            )}
+          </form>
+        </Dialog>
       )}
-    </div>
+    </AppShell>
   );
 }

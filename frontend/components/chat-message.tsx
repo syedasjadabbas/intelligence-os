@@ -2,10 +2,30 @@
 
 import React from "react";
 import { MessageItem, CitationItem } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface ChatMessageProps {
   message: MessageItem;
   onSelectCitation?: (citation: CitationItem) => void;
+}
+
+/** Assistant identity mark shown beside generated answers. */
+export function AssistantAvatar({ active = false }: { active?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "relative mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface-3",
+        active && "border-accent/40"
+      )}
+      aria-hidden
+    >
+      <span className="flex flex-col gap-[2px]">
+        <span className={cn("h-[2px] w-2.5 rounded-full bg-accent", active && "animate-pulse")} />
+        <span className={cn("h-[2px] w-[7px] rounded-full bg-accent/70", active && "animate-pulse [animation-delay:0.15s]")} />
+        <span className={cn("h-[2px] w-1 rounded-full bg-accent/40", active && "animate-pulse [animation-delay:0.3s]")} />
+      </span>
+    </span>
+  );
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
@@ -32,7 +52,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       // Markdown bold **text**
       if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
         return (
-          <strong key={index} className="font-semibold text-zinc-100">
+          <strong key={index} className="font-semibold text-fg">
             {part.slice(2, -2)}
           </strong>
         );
@@ -43,8 +63,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
     if (isBullet) {
       return (
-        <span className="flex items-start gap-2 my-1">
-          <span className="text-zinc-500 select-none">•</span>
+        <span className="my-1 flex items-start gap-2.5">
+          <span className="mt-[0.7em] size-1 shrink-0 rounded-full bg-fg-subtle select-none" aria-hidden />
           <span className="flex-1">{formattedParts}</span>
         </span>
       );
@@ -57,11 +77,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const renderParagraphs = (content: string) => {
     const paragraphs = content.split(/\n\n+/);
     return (
-      <div className="my-3 space-y-2.5 text-[16px] sm:text-[16.5px] text-zinc-200 font-normal leading-[1.75] tracking-[-0.01em]">
+      <div className="space-y-3.5 text-[15px] leading-[1.75] text-fg/90 sm:text-base">
         {paragraphs.map((para, pIdx) => {
           const lines = para.split(/\n/);
           return (
-            <p key={pIdx} className="leading-[1.75]">
+            <p key={pIdx}>
               {lines.map((line, lIdx) => (
                 <React.Fragment key={lIdx}>
                   {renderFormattedLine(line)}
@@ -75,23 +95,22 @@ export function ChatMessage({ message }: ChatMessageProps) {
     );
   };
 
-  // 1. User Message (Clean Right-Aligned Bubble - Gemini/Claude Style)
+  // 1. User message — right-aligned bubble
   if (isUser) {
     return (
-      <div className="mt-10 mb-8 flex justify-end">
-        <div className="bg-[#242429] hover:bg-zinc-800 text-zinc-100 rounded-3xl px-5 py-3 text-[15px] font-normal leading-normal max-w-[70%] ml-auto shadow-none border-0 whitespace-pre-wrap transition-colors">
+      <div className="flex justify-end animate-rise-in">
+        <div className="max-w-[88%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-line bg-surface-3 px-4 py-2.5 text-[15px] leading-relaxed text-fg sm:max-w-[75%]">
           {message.content}
         </div>
       </div>
     );
   }
 
-  // 2. Assistant Message Typography & Minimalist Clean Structure
+  // 2. Assistant message — avatar rail + reading-optimized body
   return (
-    <div className="w-full max-w-2xl lg:max-w-3xl mx-auto mt-6 mb-12 text-zinc-100">
-      <div className="min-w-0">
-        {renderParagraphs(message.content)}
-      </div>
+    <div className="flex gap-3 animate-rise-in">
+      <AssistantAvatar />
+      <div className="min-w-0 flex-1">{renderParagraphs(message.content)}</div>
     </div>
   );
 }
