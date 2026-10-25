@@ -238,6 +238,27 @@ Evaluation Criteria:
 """
 
 
+def classify_judge_error(err: Exception, provider: str, model: Optional[str]) -> str:
+    """Classifies provider errors into clear, actionable messages while redacting secrets."""
+    err_str = str(err)
+    err_lower = err_str.lower()
+    safe_err = re.sub(r"(AIza[0-9A-Za-z-_]{35}|sk-[a-zA-Z0-9]{32,})", "[REDACTED]", err_str)
+
+    if provider == "gemini":
+        if "api_key" in err_lower or "unauthenticated" in err_lower or "401" in err_lower or "api key not valid" in err_lower:
+            return "Gemini authentication failed: Invalid or missing API key. Verify GEMINI_API_KEY in backend/.env."
+        if "404" in err_lower or "not found" in err_lower:
+            return f"Gemini model '{model}' is not found or unsupported by the API. Recommended supported models are 'gemini-1.5-flash' or 'gemini-2.0-flash'."
+        if "429" in err_lower or "resource_exhausted" in err_lower or "resourceexhausted" in err_lower or "quota" in err_lower:
+            return f"Gemini API rate limit or quota exceeded (429 Resource Exhausted) for model '{model}'. Check your quota in Google AI Studio or retry after cooldown."
+        if "503" in err_lower or "unavailable" in err_lower or "internal" in err_lower or "deadline" in err_lower:
+            return f"Gemini service temporarily unavailable (503/timeout): {safe_err[:120]}. Please retry shortly."
+        if "safety" in err_lower or "blocked" in err_lower:
+            return f"Gemini evaluation response was blocked by safety filters for model '{model}'."
+
+    return f"LLM Judge execution failure: {safe_err[:200]}"
+
+
 class LLMJudge(BaseJudge):
     """
     Production-grade LLM Judge behind BaseJudge abstraction.
@@ -329,6 +350,7 @@ class LLMJudge(BaseJudge):
             parsed_schema = self._parse_and_validate(raw_response_text)
         except Exception as err:
             logger.error(f"LLMJudge failed during evaluation: {err}")
+            categorized_reason = classify_judge_error(err, self.provider or "unknown", self.model_name)
             safe_err = re.sub(r"(AIza[0-9A-Za-z-_]{35}|sk-[a-zA-Z0-9]{32,})", "[REDACTED]", str(err))
             return JudgeResult(
                 passed=False,
@@ -340,9 +362,9 @@ class LLMJudge(BaseJudge):
                 supported=False,
                 is_refusal=False,
                 key_facts_coverage=0.0,
-                reasoning=f"LLM Judge execution failure: {safe_err[:200]}",
+                reasoning=categorized_reason,
                 unsupported_claims=["Judge evaluation failed due to provider or schema error."],
-                metadata={"error": safe_err[:200]},
+                metadata={"error": safe_err[:200], "provider": self.provider, "model": self.model_name},
             )
 
         is_refusal = detect_refusal(generated_answer)
@@ -383,9 +405,13 @@ class LLMJudge(BaseJudge):
 
     async def _call_gemini(self, user_content: str) -> str:
         """Invokes Gemini using JSON mime-type response mode."""
-        model_name = self.model_name
+        model_name = self.model_name or settings.GEMINI_MODEL
         if model_name.startswith("models/"):
             model_name = model_name[len("models/"):]
+
+        active_key = self.api_key or settings.GEMINI_API_KEY
+        if active_key and active_key.strip():
+            genai.configure(api_key=active_key.strip())
 
         gemini_model = genai.GenerativeModel(
             model_name,
@@ -393,8 +419,11 @@ class LLMJudge(BaseJudge):
             generation_config={"response_mime_type": "application/json"},
         )
         response = await asyncio.to_thread(gemini_model.generate_content, user_content)
-        if response and response.text:
-            return response.text.strip()
+        try:
+            if response and response.text:
+                return response.text.strip()
+        except Exception as text_exc:
+            raise RuntimeError(f"Gemini response content could not be read (possible safety filter): {text_exc}") from text_exc
         raise RuntimeError("Empty response received from Gemini judge.")
 
     async def _call_openai(self, user_content: str) -> str:

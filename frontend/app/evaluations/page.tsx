@@ -20,6 +20,7 @@ import {
   Cpu,
   Database,
   GitCompareArrows,
+  Layers,
   Play,
   RefreshCw,
   ShieldAlert,
@@ -293,13 +294,13 @@ export default function EvaluationsDashboardPage() {
         title="Evaluations"
         description="Deterministic and LLM-judged quality benchmarks for retrieval and generation, with run-over-run regression tracking."
         actions={
-          <>
+          <div className="flex items-center gap-2">
             <ButtonLink
               href="/evaluations/datasets"
               variant="secondary"
               title="Manage custom datasets and test cases"
             >
-              <Database />
+              <Database className="size-3.5 text-[#ff7a45]" />
               Datasets
             </ButtonLink>
             <Button
@@ -309,20 +310,21 @@ export default function EvaluationsDashboardPage() {
               title="Refresh runs"
               aria-label="Refresh runs"
             >
-              <RefreshCw className={cn(loading && "animate-spin")} />
+              <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
             </Button>
-            <Button
-              variant="primary"
+            <button
+              type="button"
               onClick={() => {
                 setRunError(null);
                 fetchDatasets();
                 setShowRunModal(true);
               }}
+              className="btn-accent-ref flex h-8 items-center gap-2 rounded-xl px-3.5 text-xs font-medium cursor-pointer shadow-md"
             >
-              <Play className="fill-current" />
-              Start Evaluation
-            </Button>
-          </>
+              <Play className="size-3 fill-current" />
+              <span>Start Evaluation</span>
+            </button>
+          </div>
         }
       />
 
@@ -333,18 +335,18 @@ export default function EvaluationsDashboardPage() {
           </Alert>
         )}
 
-        {/* Latest run snapshot */}
-        <section aria-labelledby="latest-run-heading" className="space-y-3">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <h2 id="latest-run-heading">
-              <Eyebrow>Latest run benchmark metrics</Eyebrow>
+        {/* 4-KPI Metric Cards matching Reference Screenshot */}
+        <section aria-labelledby="latest-run-heading">
+          <div className="mb-3.5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h2 id="latest-run-heading" className="text-xs font-medium uppercase tracking-wider text-[#8e95a5]">
+              Latest Benchmark Quality Metrics
             </h2>
             {latestRun && (
-              <span className="text-xs text-fg-subtle">
+              <span className="text-xs text-[#8e95a5]">
                 Based on run{" "}
                 <Link
                   href={`/evaluations/${latestRun.id}`}
-                  className="font-mono text-fg-muted underline-offset-4 hover:text-fg hover:underline"
+                  className="font-mono text-white underline-offset-4 hover:underline"
                 >
                   {latestRun.id.slice(0, 8)}
                 </Link>{" "}
@@ -353,104 +355,116 @@ export default function EvaluationsDashboardPage() {
             )}
           </div>
 
-          <MetricGrid>
-            <MetricTile
-              label="Pass rate"
-              value={latestRun ? `${(latestRun.pass_rate * 100).toFixed(1)}%` : "—"}
-              tone={latestRun ? passRateTone(latestRun.pass_rate) : "default"}
-              meter={latestRun?.pass_rate}
-              hint={
-                latestRun
-                  ? `${latestRun.passed_test_cases}/${latestRun.total_test_cases} passed`
-                  : "No runs"
-              }
-            />
-            <MetricTile
-              label="Recall@5"
-              value={fmt3(latestRun?.recall_at_5)}
-              meter={latestRun?.recall_at_5}
-              hint="Target ≥ 0.95"
-            />
-            <MetricTile
-              label="nDCG@5"
-              value={fmt3(latestRun?.ndcg_at_5)}
-              meter={latestRun?.ndcg_at_5}
-              hint="Ranking quality"
-            />
-            <MetricTile
-              label="MRR"
-              value={fmt3(latestRun?.mrr)}
-              meter={latestRun?.mrr}
-              hint="Reciprocal rank"
-            />
-            <MetricTile
-              label="Faithfulness"
-              value={fmt3(latestRun?.mean_faithfulness)}
-              meter={latestRun?.mean_faithfulness}
-              tone="accent"
-              hint="Zero-hallucination"
-            />
-            <MetricTile
-              label="Correctness"
-              value={fmt3(latestRun?.mean_correctness)}
-              meter={latestRun?.mean_correctness}
-              hint="Factual accuracy"
-            />
-            <MetricTile
-              label="Completeness"
-              value={fmt3(latestRun?.mean_completeness)}
-              meter={latestRun?.mean_completeness}
-              hint="Key point coverage"
-            />
-            <MetricTile
-              label="Mean latency"
-              value={
-                latestRun?.mean_latency_ms !== undefined && latestRun.mean_latency_ms !== null
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="metric-card-ref p-4.5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white">
+                  <Activity className="size-4 text-[#ff7a45]" />
+                </div>
+                <span className="text-xs font-medium text-[#8e95a5]">Overall Pass Rate</span>
+              </div>
+              <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-white">
+                {latestRun ? `${(latestRun.pass_rate * 100).toFixed(1)}%` : "—"}
+              </div>
+              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 w-fit">
+                <span className="size-1 rounded-full bg-emerald-400" />
+                <span>
+                  {latestRun
+                    ? `${latestRun.passed_test_cases}/${latestRun.total_test_cases} passed`
+                    : "No runs yet"}
+                </span>
+              </div>
+            </div>
+
+            <div className="metric-card-ref p-4.5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white">
+                  <Layers className="size-4 text-[#5b5ff5]" />
+                </div>
+                <span className="text-xs font-medium text-[#8e95a5]">Retrieval Recall@5</span>
+              </div>
+              <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-white">
+                {fmt3(latestRun?.recall_at_5)}
+              </div>
+              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 w-fit">
+                <span>Target ≥ 0.95</span>
+              </div>
+            </div>
+
+            <div className="metric-card-ref p-4.5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white">
+                  <Sparkles className="size-4 text-purple-400" />
+                </div>
+                <span className="text-xs font-medium text-[#8e95a5]">Faithfulness (Judge)</span>
+              </div>
+              <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-white">
+                {fmt3(latestRun?.mean_faithfulness)}
+              </div>
+              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20 w-fit">
+                <span>Zero-hallucination</span>
+              </div>
+            </div>
+
+            <div className="metric-card-ref p-4.5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white">
+                  <Cpu className="size-4 text-amber-400" />
+                </div>
+                <span className="text-xs font-medium text-[#8e95a5]">Mean Latency</span>
+              </div>
+              <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-white">
+                {latestRun?.mean_latency_ms !== undefined && latestRun.mean_latency_ms !== null
                   ? `${Math.round(latestRun.mean_latency_ms)}ms`
-                  : "—"
-              }
-              tone="warning"
-              hint={`P95: ${
-                latestRun?.latency_p95_ms ? `${Math.round(latestRun.latency_p95_ms)}ms` : "—"
-              }`}
-            />
-          </MetricGrid>
+                  : "—"}
+              </div>
+              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-[#8e95a5] bg-white/[0.04] px-2 py-0.5 rounded-full border border-white/10 w-fit">
+                <span>P95: {latestRun?.latency_p95_ms ? `${Math.round(latestRun.latency_p95_ms)}ms` : "—"}</span>
+              </div>
+            </div>
+          </div>
         </section>
 
-        {/* Run history */}
-        <Panel>
-          <PanelHeader
-            title="Run history"
-            count={runs.length}
-            description="Select any two runs to compare regressions, or inspect a run's individual case results."
-            actions={
-              <>
-                <Select
-                  aria-label="Filter by judge"
-                  value={judgeFilter}
-                  onChange={(e) => setJudgeFilter(e.target.value)}
-                  className="h-8 text-[13px]"
-                >
-                  <option value="all">All Judges</option>
-                  <option value="deterministic">Deterministic</option>
-                  <option value="llm">LLM Judge</option>
-                </Select>
-                <Select
-                  aria-label="Filter by status"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="h-8 text-[13px]"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="COMPLETED">Completed</option>
-                  <option value="RUNNING">Running</option>
-                  <option value="PENDING">Queued</option>
-                  <option value="CANCELLED">Cancelled</option>
-                  <option value="FAILED">Failed</option>
-                </Select>
-              </>
-            }
-          />
+        {/* Run history Panel */}
+        <div className="panel-ref overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-white/[0.06] bg-white/[0.02] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-sm font-semibold tracking-tight text-white">Run History</h2>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-[#8e95a5]">
+                  {runs.length}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-[#8e95a5]">
+                Select any two runs to compare regressions, or inspect a run&apos;s individual case results.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                aria-label="Filter by judge"
+                value={judgeFilter}
+                onChange={(e) => setJudgeFilter(e.target.value)}
+                className="h-8 text-xs rounded-xl border-white/10 bg-[#0c0d12]"
+              >
+                <option value="all">All Judges</option>
+                <option value="deterministic">Deterministic</option>
+                <option value="llm">LLM Judge</option>
+              </Select>
+              <Select
+                aria-label="Filter by status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-8 text-xs rounded-xl border-white/10 bg-[#0c0d12]"
+              >
+                <option value="all">All Statuses</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="RUNNING">Running</option>
+                <option value="PENDING">Queued</option>
+                <option value="CANCELLED">Cancelled</option>
+                <option value="FAILED">Failed</option>
+              </Select>
+            </div>
+          </div>
 
           {/* Comparison selection bar */}
           {selectedRunIds.length > 0 && (
@@ -649,7 +663,7 @@ export default function EvaluationsDashboardPage() {
               )}
             </TBody>
           </TableWrap>
-        </Panel>
+        </div>
       </div>
 
       {/* Start evaluation run */}

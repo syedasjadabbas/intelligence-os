@@ -53,24 +53,24 @@ export function PipelineTrace({ trace, className }: PipelineTraceProps) {
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-500 hover:text-zinc-300 border border-zinc-800/80 hover:border-zinc-700 text-[11px] font-mono transition-all duration-150 cursor-pointer shadow-xs group"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 text-fg-subtle hover:text-fg-muted border border-line hover:border-line-strong text-[11px] font-mono transition-all duration-150 cursor-pointer shadow-xs group"
           title="Toggle Pipeline Trace Telemetry"
         >
-          <span className="text-amber-400/90">⚡</span>
+          <span className="text-amber-400">⚡</span>
           <span>
             {latencies.total ? `${latencies.total.toFixed(0)}ms` : "<150ms"}
           </span>
-          <span className="text-zinc-700">•</span>
+          <span className="text-fg-faint">•</span>
           <span>
             Hybrid Search ({candidateCount} {candidateCount === 1 ? "chunk" : "chunks"})
           </span>
           {isQueryRewritten && (
             <>
-              <span className="text-zinc-700">•</span>
-              <span className="text-indigo-400">Rewritten</span>
+              <span className="text-fg-faint">•</span>
+              <span className="text-accent">Rewritten</span>
             </>
           )}
-          <span className="text-zinc-600 group-hover:text-zinc-400 ml-0.5">
+          <span className="text-fg-faint group-hover:text-fg-subtle ml-0.5">
             {isOpen ? (
               <ChevronUp className="w-3 h-3" />
             ) : (
@@ -82,26 +82,26 @@ export function PipelineTrace({ trace, className }: PipelineTraceProps) {
 
       {/* Smooth Accordion Expansion */}
       {isOpen && (
-        <div className="mt-2.5 rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md p-4 space-y-3.5 shadow-xl transition-all animate-in fade-in-50 duration-200 text-left w-full">
+        <div className="mt-2.5 rounded-xl border border-line-strong bg-surface-2/95 backdrop-blur-md p-4 space-y-3.5 shadow-pop transition-all animate-rise-in text-left w-full">
           {/* Query Rewriting */}
           {trace.rewritten_query && (
             <div>
-              <div className="flex items-center gap-1.5 text-zinc-400 mb-1.5 font-medium text-[11px] uppercase tracking-wider">
-                <GitBranch className="w-3 h-3 text-indigo-400" />
-                <span>Query Expansion & Anaphora</span>
+              <div className="flex items-center gap-1.5 text-fg-subtle mb-1.5 font-medium text-[11px] uppercase tracking-wider">
+                <GitBranch className="w-3 h-3 text-accent" />
+                <span>Query Expansion &amp; Anaphora</span>
               </div>
-              <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/70 space-y-1.5 font-mono text-[11px]">
+              <div className="p-3 rounded-lg bg-surface-3 border border-line space-y-1.5 font-mono text-[11px]">
                 {trace.original_query && (
                   <div className="flex items-start gap-2">
-                    <span className="text-zinc-500 w-16 shrink-0">Original:</span>
-                    <span className="text-zinc-300">{trace.original_query}</span>
+                    <span className="text-fg-subtle w-16 shrink-0">Original:</span>
+                    <span className="text-fg-muted">{trace.original_query}</span>
                   </div>
                 )}
-                <div className="flex items-start gap-2 pt-1.5 border-t border-zinc-800/60">
-                  <span className="text-indigo-400 w-16 shrink-0 font-medium">
+                <div className="flex items-start gap-2 pt-1.5 border-t border-line">
+                  <span className="text-accent w-16 shrink-0 font-medium">
                     Resolved:
                   </span>
-                  <span className="text-zinc-100">{trace.rewritten_query}</span>
+                  <span className="text-fg font-medium">{trace.rewritten_query}</span>
                 </div>
               </div>
             </div>
@@ -109,32 +109,32 @@ export function PipelineTrace({ trace, className }: PipelineTraceProps) {
 
           {/* Latency Breakdown */}
           <div>
-            <div className="flex items-center gap-1.5 text-zinc-400 mb-1.5 font-medium text-[11px] uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 text-fg-subtle mb-1.5 font-medium text-[11px] uppercase tracking-wider">
               <Zap className="w-3 h-3 text-amber-400" />
               <span>Latency Profiler</span>
             </div>
             <div className="grid grid-cols-4 gap-2 text-center font-mono">
-              <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800/70">
-                <p className="text-[10px] text-zinc-500">Retrieval</p>
-                <p className="text-xs font-semibold text-zinc-200 mt-0.5">
+              <div className="p-2.5 rounded-lg bg-surface-3 border border-line">
+                <p className="text-[10px] text-fg-subtle">Retrieval</p>
+                <p className="text-xs font-semibold text-fg mt-0.5">
                   {latencies.retrieval ? `${latencies.retrieval.toFixed(1)}ms` : "—"}
                 </p>
               </div>
-              <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800/70">
-                <p className="text-[10px] text-zinc-500">Rerank</p>
-                <p className="text-xs font-semibold text-zinc-200 mt-0.5">
+              <div className="p-2.5 rounded-lg bg-surface-3 border border-line">
+                <p className="text-[10px] text-fg-subtle">Rerank</p>
+                <p className="text-xs font-semibold text-fg mt-0.5">
                   {latencies.rerank ? `${latencies.rerank.toFixed(1)}ms` : "—"}
                 </p>
               </div>
-              <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800/70">
-                <p className="text-[10px] text-zinc-500">Generation</p>
-                <p className="text-xs font-semibold text-zinc-200 mt-0.5">
+              <div className="p-2.5 rounded-lg bg-surface-3 border border-line">
+                <p className="text-[10px] text-fg-subtle">Generation</p>
+                <p className="text-xs font-semibold text-fg mt-0.5">
                   {latencies.generation ? `${latencies.generation.toFixed(1)}ms` : "—"}
                 </p>
               </div>
-              <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800/70">
-                <p className="text-[10px] text-zinc-500">Total</p>
-                <p className="text-xs font-semibold text-indigo-400 mt-0.5">
+              <div className="p-2.5 rounded-lg bg-surface-3 border border-line">
+                <p className="text-[10px] text-fg-subtle">Total</p>
+                <p className="text-xs font-semibold text-accent mt-0.5">
                   {latencies.total ? `${latencies.total.toFixed(1)}ms` : "—"}
                 </p>
               </div>
@@ -143,34 +143,34 @@ export function PipelineTrace({ trace, className }: PipelineTraceProps) {
 
           {/* Candidate Funnel */}
           <div>
-            <div className="flex items-center gap-1.5 text-zinc-400 mb-1.5 font-medium text-[11px] uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 text-fg-subtle mb-1.5 font-medium text-[11px] uppercase tracking-wider">
               <Layers className="w-3 h-3 text-purple-400" />
               <span>Retrieval Funnel</span>
             </div>
-            <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800/70 flex items-center justify-around font-mono text-center">
+            <div className="p-2.5 rounded-lg bg-surface-3 border border-line flex items-center justify-around font-mono text-center">
               <div>
-                <span className="text-[10px] text-zinc-500 block">
+                <span className="text-[10px] text-fg-subtle block">
                   Candidates
                 </span>
-                <span className="text-sm font-semibold text-zinc-200">
+                <span className="text-sm font-semibold text-fg">
                   {candidateCount}
                 </span>
               </div>
-              <span className="text-zinc-600">→</span>
+              <span className="text-fg-faint">→</span>
               <div>
-                <span className="text-[10px] text-zinc-500 block">
+                <span className="text-[10px] text-fg-subtle block">
                   Reranked
                 </span>
-                <span className="text-sm font-semibold text-zinc-200">
+                <span className="text-sm font-semibold text-fg">
                   {trace.reranked_scores?.length || candidateCount}
                 </span>
               </div>
-              <span className="text-zinc-600">→</span>
+              <span className="text-fg-faint">→</span>
               <div>
-                <span className="text-[10px] text-zinc-500 block">
+                <span className="text-[10px] text-fg-subtle block">
                   Context Used
                 </span>
-                <span className="text-sm font-semibold text-indigo-400">
+                <span className="text-sm font-semibold text-accent">
                   {trace.selected_sources?.length || 0}
                 </span>
               </div>
@@ -180,27 +180,27 @@ export function PipelineTrace({ trace, className }: PipelineTraceProps) {
           {/* Reranker Scores */}
           {trace.reranked_scores && trace.reranked_scores.length > 0 && (
             <div>
-              <div className="flex items-center gap-1.5 text-zinc-400 mb-1.5 font-medium text-[11px] uppercase tracking-wider">
+              <div className="flex items-center gap-1.5 text-fg-subtle mb-1.5 font-medium text-[11px] uppercase tracking-wider">
                 <BarChart2 className="w-3 h-3 text-emerald-400" />
                 <span>Cross-Encoder Confidence</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800/70 space-y-2">
+              <div className="p-2.5 rounded-lg bg-surface-3 border border-line space-y-2">
                 {trace.reranked_scores.map((cand, idx) => {
                   const score = cand.rerank_score ?? cand.score;
                   const pct = Math.min(100, Math.max(5, score * 100));
                   return (
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-zinc-300 truncate max-w-[220px]">
+                        <span className="text-fg-muted truncate max-w-[220px]">
                           {cand.document_title}
                         </span>
-                        <span className="font-mono text-indigo-400 font-medium">
+                        <span className="font-mono text-accent font-medium">
                           {score.toFixed(4)}
                         </span>
                       </div>
-                      <div className="w-full bg-zinc-800 h-1 rounded-full overflow-hidden">
+                      <div className="w-full bg-surface-4 h-1.5 rounded-full overflow-hidden">
                         <div
-                          className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full"
+                          className="bg-accent h-full rounded-full transition-all duration-300"
                           style={{ width: `${pct}%` }}
                         />
                       </div>

@@ -29,23 +29,47 @@ ENV/
 env.bak/
 venv.bak/
 
-# Environment variables
+# Environment variables & secrets (keep .env.example)
 .env
 .env.local
 .env.*.local
 *.env
 **/.env
 **/.env.local
+!**/.env.example
+!*.env.example
 
-# Database
+# Database & SQLite files
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
+*.sqlite-journal
+*.sql
+*.dump
+*.rdb
 
-# Uploads & Storage
+# Uploaded documents, private data & PDFs
 uploads/
-**/uploads/
+**/uploads/*
 !**/uploads/.gitkeep
+*.pdf
+**/*.pdf
+
+# Local AI Models, Weights & Caches
+/models/
+backend/models/
+!backend/app/models/
+!backend/app/models/*.py
+!backend/app/models/**/*.py
+**/.cache/
+**/huggingface/
+**/.ollama/
+*.onnx
+*.bin
+*.safetensors
+*.pt
+*.pth
 
 # Node / Frontend
 node_modules/
@@ -55,23 +79,33 @@ node_modules/
 out/
 build/
 .vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IDE
+# Logs & Temporary Files
+*.log
+**/*.log
+logs/
+tmp/
+temp/
+
+# IDE & OS clutter
 .idea/
 .vscode/*
 !.vscode/settings.json
 *.swp
 *.swo
+.DS_Store
+Thumbs.db
+ehthumbs.db
 
-# Docker
+# Docker volumes
 postgres_data/
 redis_data/
 
 # Testing & Coverage
 .coverage
+.coverage.*
 htmlcov/
 .pytest_cache/
-
-# OS specific
-.DS_Store
-Thumbs.db

@@ -122,7 +122,24 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Run Database Migrations
+### 2. Local AI Setup (100% Free & Local, Zero External API Keys)
+
+Intelligence OS runs entirely locally without any external paid API dependencies:
+
+1. **Local Embeddings**: Powered by `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions, L2-normalized). Automatically downloaded and cached via PyTorch / HuggingFace.
+2. **Local Cross-Encoder Reranker**: Powered by `cross-encoder/ms-marco-MiniLM-L-6-v2` for precise semantic re-ranking.
+3. **Local LLM Generation (Ollama)**:
+   - Install Ollama (Native Windows or WSL2):
+     ```bash
+     curl -fsSL https://ollama.com/install.sh | sh
+     ```
+   - Pull the ultra-fast, capable 1.3GB model:
+     ```bash
+     ollama pull llama3.2:1b
+     ```
+   - Ensure Ollama is listening on `http://localhost:11434` (default). In WSL2, set `OLLAMA_HOST=0.0.0.0:11434`.
+
+### 3. Run Database Migrations
 
 ```bash
 # Direct alembic CLI
@@ -132,7 +149,9 @@ alembic upgrade head
 python run_migrations.py
 ```
 
-### 3. Run Verification Test Suites
+> **Note on Offline Development**: If Docker / PostgreSQL is not running, Intelligence OS automatically falls back to an offline SQLite database (`backend/intelligence_os_dev.db`) with full schema and multi-tenant isolation preserved.
+
+### 4. Run Verification Test Suites & Benchmark
 
 ```bash
 # Step 2 Verification (Auth, RBAC, Multi-Tenant User Management)
@@ -149,9 +168,12 @@ python test_rag_pipeline.py
 
 # Step 6 Verification (Frontend/Backend End-to-End Contract & Guardrail Verification)
 python test_frontend_e2e_contract.py
+
+# RAG Retrieval & Sufficiency Benchmark (50 evaluation test cases)
+python test_eval_runner.py
 ```
 
-### 4. Running the Complete System (Backend + Frontend)
+### 5. Running the Complete System (Backend + Frontend)
 
 To launch both the FastAPI backend and Next.js frontend concurrently:
 
@@ -180,3 +202,16 @@ npm run dev
 - **Document Admin Console**: [http://localhost:3000/documents](http://localhost:3000/documents)
 - **FastAPI Backend**: [http://localhost:8000](http://localhost:8000)
 - **API Documentation (Swagger UI)**: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### 6. Authentication & Local Testing Credentials
+
+For local development and testing, you can use either:
+- **Pre-configured User with Northstar Document**:
+  - Email: `sp23-bcs-151@cuilahore.edu.pk`
+  - Password: `Admin123!`
+  - Includes pre-ingested `Zeploy_Client_Project_Brief_Intelligence_OS_Test.pdf`
+- **Demo Administrator**:
+  - Email: `admin@demo.com`
+  - Password: `Admin123!`
+- **Self-Registration**:
+  - Visit [http://localhost:3000/register](http://localhost:3000/register) to create any new isolated tenant organization and admin account.

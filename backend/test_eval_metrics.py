@@ -529,6 +529,41 @@ async def test_mocked_llm_judge():
         assert result.faithfulness == 1.0, f"Clamped to 1.0, got {result.faithfulness}"
         assert result.correctness == 0.0, f"Clamped to 0.0, got {result.correctness}"
 
+    # Test Gemini error classification for actionable diagnostics
+    # 1. Invalid API key error
+    with patch("app.eval.judges.genai.GenerativeModel") as mock_gen_model:
+        mock_instance = MagicMock()
+        mock_instance.generate_content.side_effect = RuntimeError("API_KEY_INVALID: The provided API key is not valid.")
+        mock_gen_model.return_value = mock_instance
+
+        judge = LLMJudge(provider="gemini", api_key="mock-gemini-key")
+        result = await judge.evaluate(query="test", generated_answer="test")
+        assert result.passed is False
+        assert "Invalid or missing API key" in result.reasoning
+
+    # 2. Model not found (404) error
+    with patch("app.eval.judges.genai.GenerativeModel") as mock_gen_model:
+        mock_instance = MagicMock()
+        mock_instance.generate_content.side_effect = RuntimeError("404 models/gemini-2.5-flash is not found for API version v1beta")
+        mock_gen_model.return_value = mock_instance
+
+        judge = LLMJudge(provider="gemini", api_key="mock-gemini-key", model="gemini-2.5-flash")
+        result = await judge.evaluate(query="test", generated_answer="test")
+        assert result.passed is False
+        assert "not found or unsupported" in result.reasoning
+        assert "gemini-1.5-flash" in result.reasoning
+
+    # 3. Quota exceeded (429) error
+    with patch("app.eval.judges.genai.GenerativeModel") as mock_gen_model:
+        mock_instance = MagicMock()
+        mock_instance.generate_content.side_effect = RuntimeError("429 ResourceExhausted: Quota exceeded for quota metric")
+        mock_gen_model.return_value = mock_instance
+
+        judge = LLMJudge(provider="gemini", api_key="mock-gemini-key")
+        result = await judge.evaluate(query="test", generated_answer="test")
+        assert result.passed is False
+        assert "rate limit or quota exceeded" in result.reasoning.lower()
+
     # Test missing credentials fails clearly
     try:
         LLMJudge(provider="gemini", api_key="  ")

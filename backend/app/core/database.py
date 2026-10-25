@@ -86,7 +86,9 @@ async def init_db() -> None:
             f"({type(exc).__name__}: {redact_credentials(str(exc))}). "
             "Switching to local persistent SQLite database ('intelligence_os_dev.db') for offline development..."
         )
-        sqlite_url = "sqlite+aiosqlite:///intelligence_os_dev.db"
+        from pathlib import Path
+        db_path = (Path(__file__).resolve().parent.parent.parent / "intelligence_os_dev.db").as_posix()
+        sqlite_url = f"sqlite+aiosqlite:///{db_path}"
         engine = create_async_engine(
             sqlite_url,
             echo=settings.DEBUG,

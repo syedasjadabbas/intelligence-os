@@ -3,8 +3,17 @@
  * Manages JWT tokens, multi-tenant headers, and API methods.
  */
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+export const getApiBaseUrl = (): string => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "");
+  }
+  // In the browser, use same-origin proxy to eliminate cross-origin CORS & PNA issues
+  if (typeof window !== "undefined") {
+    return "/api/v1";
+  }
+  // Server-side (Node.js/Next.js SSR), relative URLs cannot be used by fetch, so target backend directly
+  return "http://127.0.0.1:8000/api/v1";
+};
 
 // Auth & Tenant Types
 export interface Organization {
@@ -181,7 +190,9 @@ class ApiClient {
       headers["Content-Type"] = "application/json";
     }
 
-    const url = `${API_BASE_URL}${endpoint}`;
+    const baseUrl = getApiBaseUrl();
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const url = `${baseUrl}${cleanEndpoint}`;
     const timeoutMs = options.timeoutMs ?? 10000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
@@ -209,22 +220,15 @@ class ApiClient {
         networkError?.name === "AbortError" ||
         networkError?.name === "TimeoutError";
       const errMsg = networkError?.message || String(networkError);
-      const isNetworkHangOrRefusal =
-        isAbort ||
-        errMsg.includes("Failed to fetch") ||
-        errMsg.includes("ECONNREFUSED") ||
-        errMsg.includes("fetch failed") ||
-        errMsg.includes("NetworkError") ||
-        errMsg.includes("Network request failed");
 
-      if (isNetworkHangOrRefusal) {
+      if (isAbort) {
         throw new Error(
-          "Unable to reach the server. Please verify the backend is running."
+          `Request timed out after ${timeoutMs}ms while contacting ${url}. Please try again.`
         );
       }
 
       throw new Error(
-        "Unable to reach the server. Please verify the backend is running."
+        `Unable to reach the server at ${url} (${errMsg}). Please verify the backend is running and reachable.`
       );
     } finally {
       clearTimeout(timeoutId);
@@ -520,6 +524,54 @@ class ApiClient {
       timeoutMs: 15000,
     });
   }
+
+  // --- Hybrid Search APIs ---
+  async searchDocuments(payload: SearchPayload): Promise<SearchResponse> {
+    return this.request<SearchResponse>("/search", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 35000,
+    });
+  }
+
+  // --- Health APIs ---
+  async getHealth(): Promise<HealthResponse> {
+    return this.request<HealthResponse>("/health", {
+      timeoutMs: 8000,
+    });
+  }
+}
+
+export interface SearchResultItem {
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  page_number?: number | null;
+  section_heading?: string | null;
+  content: string;
+  score: number;
+  vector_rank?: number | null;
+  keyword_rank?: number | null;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResultItem[];
+  total_candidates: number;
+}
+
+export interface SearchPayload {
+  query: string;
+  top_k?: number;
+  vector_weight?: number;
+}
+
+export interface HealthResponse {
+  status: string;
+  database: string;
+  redis: string;
+  pgvector_ready: boolean;
+  version?: string;
 }
 
 // Evaluation Types (Phase 3 & Phase 5B)

@@ -14,21 +14,21 @@ export type ButtonVariant =
 export type ButtonSize = "xs" | "sm" | "md" | "lg" | "icon-xs" | "icon-sm" | "icon-md";
 
 const base =
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium select-none cursor-pointer " +
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl font-medium select-none cursor-pointer " +
   "transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-150 ease-out " +
   "active:translate-y-px disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0";
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-fg text-canvas hover:bg-white shadow-[0_1px_0_0_rgb(255_255_255/0.25)_inset]",
+    "bg-gradient-to-b from-[#ff5c2b] to-[#ea3a0e] text-white border border-white/20 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_4px_16px_rgba(234,58,14,0.35)] hover:brightness-110",
   accent:
-    "bg-accent text-accent-fg hover:bg-accent-strong shadow-[0_1px_0_0_rgb(255_255_255/0.25)_inset]",
+    "bg-gradient-to-b from-[#ff5c2b] to-[#ea3a0e] text-white border border-white/20 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_4px_16px_rgba(234,58,14,0.35)] hover:brightness-110",
   secondary:
-    "bg-surface-3 text-fg border border-line-strong hover:bg-surface-4 hover:border-fg-faint",
-  ghost: "text-fg-muted hover:text-fg hover:bg-surface-3",
+    "bg-white/[0.04] text-[#f3f4f6] border border-white/10 hover:bg-white/[0.08] hover:border-white/20 shadow-xs",
+  ghost: "text-[#8e95a5] hover:text-white hover:bg-white/[0.05]",
   danger:
-    "text-danger bg-danger/10 border border-danger/25 hover:bg-danger/18 hover:border-danger/40",
-  "danger-solid": "bg-danger text-white hover:brightness-110",
+    "text-rose-400 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 hover:border-rose-500/30",
+  "danger-solid": "bg-rose-600 text-white hover:brightness-110",
 };
 
 const sizes: Record<ButtonSize, string> = {

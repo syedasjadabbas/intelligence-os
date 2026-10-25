@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import math
@@ -10,11 +11,10 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def generate_deterministic_mock_embedding(text: str, dim: int = 1536) -> List[float]:
+def generate_deterministic_mock_embedding(text: str, dim: int = 384) -> List[float]:
     """
-    Generates a deterministic 1536-dimensional L2-normalized vector using feature hashing.
-    Preserves semantic similarity based on shared vocabulary and character n-grams.
-    Used when OPENAI_API_KEY is omitted or in testing environments.
+    Generates a deterministic vector using feature hashing.
+    Used ONLY when EMBEDDING_PROVIDER is explicitly set to 'mock' or in unit testing.
     """
     cleaned = text.lower().strip()
     if not cleaned:
@@ -23,7 +23,6 @@ def generate_deterministic_mock_embedding(text: str, dim: int = 1536) -> List[fl
         return vec
 
     tokens = re.findall(r"\w+", cleaned)
-    # Extract 3-gram and 4-gram character shingles for subword matching
     shingles = [cleaned[i : i + 4] for i in range(max(0, len(cleaned) - 3))]
     features = tokens + shingles[:60]
 
@@ -54,8 +53,10 @@ def generate_deterministic_mock_embedding(text: str, dim: int = 1536) -> List[fl
 class EmbeddingService:
     """
     Asynchronous vector embedding service.
-    Integrates with OpenAI's text-embedding-3-small API with seamless fallback
-    to deterministic feature-hashed embeddings when API keys are not provided.
+    Supports:
+    - 'local' / 'sentence-transformers': Local sentence-transformers/all-MiniLM-L6-v2 (384-dim, L2-normalized)
+    - 'openai': OpenAI text-embedding-3-small (1536-dim)
+    - 'mock': Deterministic feature-hashed vector for testing
     """
 
     def __init__(
@@ -63,12 +64,15 @@ class EmbeddingService:
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         dim: Optional[int] = None,
+        provider: Optional[str] = None,
     ):
         self.api_key = api_key
         self.model = model or settings.EMBEDDING_MODEL
         self.dim = dim or settings.EMBEDDING_DIM
+        self.provider = (provider or getattr(settings, "EMBEDDING_PROVIDER", "local")).lower()
         self._client: Optional[AsyncOpenAI] = None
         self._cached_key: Optional[str] = None
+        self._local_model = None
 
     @property
     def client(self) -> Optional[AsyncOpenAI]:
@@ -80,44 +84,74 @@ class EmbeddingService:
                     self._cached_key = current_key
                 except Exception as exc:
                     logger.warning(
-                        f"Failed to initialize OpenAI client: {exc}. Using deterministic mock."
+                        f"Failed to initialize OpenAI client: {exc}."
                     )
                     self._client = None
         else:
             self._client = None
         return self._client
 
+    def _get_local_model(self):
+        """Lazy loader for local SentenceTransformer model."""
+        if self._local_model is None:
+            logger.info(f"Loading local SentenceTransformer model: {self.model}")
+            from sentence_transformers import SentenceTransformer
+            self._local_model = SentenceTransformer(self.model)
+        return self._local_model
+
     async def generate_embedding(self, text: str) -> List[float]:
-        """Generate a single 1536-dimensional vector embedding."""
+        """Generate a single vector embedding."""
         embeddings = await self.generate_embeddings_batch([text])
         return embeddings[0]
 
     async def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
-        Generate embeddings for a batch of text strings.
-        Dispatches to OpenAI if API client is configured, otherwise uses deterministic mock.
+        Generate embeddings for a batch of text strings using configured provider.
+        Never silently falls back to mock when local or OpenAI provider fails.
         """
         if not texts:
             return []
 
-        # Use OpenAI if configured
-        openai_client = self.client
-        if openai_client:
+        # 1. Local SentenceTransformer Provider (Default)
+        if self.provider in ("local", "sentence-transformers"):
             try:
-                # Sanitize inputs (OpenAI cannot take empty strings)
+                local_model = self._get_local_model()
                 safe_texts = [t if t.strip() else " " for t in texts]
-                response = await self._client.embeddings.create(
+                raw_embeddings = await asyncio.to_thread(
+                    local_model.encode,
+                    safe_texts,
+                    normalize_embeddings=True,
+                    convert_to_numpy=True,
+                )
+                embeddings = [e.tolist() for e in raw_embeddings]
+                return embeddings
+            except Exception as exc:
+                logger.error(f"Local sentence-transformers embedding failed: {exc}")
+                raise RuntimeError(
+                    f"Local embedding generation failed with model '{self.model}': {exc}"
+                ) from exc
+
+        # 2. OpenAI Provider
+        if self.provider == "openai":
+            openai_client = self.client
+            if not openai_client:
+                raise ValueError("EMBEDDING_PROVIDER is 'openai' but OPENAI_API_KEY is not set.")
+            try:
+                safe_texts = [t if t.strip() else " " for t in texts]
+                response = await openai_client.embeddings.create(
                     input=safe_texts,
                     model=self.model,
                 )
                 return [item.embedding for item in response.data]
             except Exception as exc:
-                logger.error(
-                    f"OpenAI embedding API call failed: {exc}. Falling back to deterministic embeddings."
-                )
+                logger.error(f"OpenAI embedding API call failed: {exc}")
+                raise RuntimeError(f"OpenAI embedding generation failed: {exc}") from exc
 
-        # Fallback generator
-        return [generate_deterministic_mock_embedding(t, dim=self.dim) for t in texts]
+        # 3. Explicit Mock Provider
+        if self.provider == "mock":
+            return [generate_deterministic_mock_embedding(t, dim=self.dim) for t in texts]
+
+        raise ValueError(f"Unknown EMBEDDING_PROVIDER: '{self.provider}'. Supported: 'local', 'openai', 'mock'")
 
 
 # Global singleton instance

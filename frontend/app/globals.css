@@ -6,51 +6,52 @@
 
 /* ==========================================================================
    Intelligence OS design tokens
-   Graphite neutrals with a single iris accent. Semantic tones are reserved
-   for status (success / warning / danger / info) and judge types.
+   Linear & Vercel-inspired deep obsidian neutrals with an electric indigo
+   accent. Semantic tones are reserved for status & judge types.
    ========================================================================== */
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Surfaces */
-  --color-canvas: #0a0b0d;
-  --color-surface: #101114;
-  --color-surface-2: #15161a;
-  --color-surface-3: #1b1c21;
-  --color-surface-4: #23242a;
+  /* Surfaces: Reference dark charcoal layered palette */
+  --color-canvas: #090a0f;
+  --color-surface: #101218;
+  --color-surface-2: #141720;
+  --color-surface-3: #1a1d27;
+  --color-surface-4: #222634;
 
-  /* Lines */
-  --color-line: #1f2025;
-  --color-line-strong: #2c2d34;
+  /* Lines: High-precision crisp micro-borders */
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.12);
 
-  /* Text */
-  --color-fg: #ededf0;
-  --color-fg-muted: #a6a7b0;
-  --color-fg-subtle: #74757e;
-  --color-fg-faint: #4d4e56;
+  /* Text: High legibility typography hierarchy */
+  --color-fg: #f3f4f6;
+  --color-fg-muted: #d1d5db;
+  --color-fg-subtle: #8e95a5;
+  --color-fg-faint: #5a6072;
 
-  /* Brand accent */
-  --color-accent: #8f8cff;
-  --color-accent-strong: #a9a7ff;
-  --color-accent-fg: #0b0a1f;
+  /* Brand accent: Reference vibrant flame/coral for actions + slate indigo for systems */
+  --color-accent: #ff5c2b;
+  --color-accent-strong: #ea3a0e;
+  --color-accent-fg: #ffffff;
+  --color-indigo-accent: #5b5ff5;
 
   /* Semantic tones */
-  --color-success: #4cc38a;
-  --color-warning: #e2a336;
-  --color-danger: #f0646c;
-  --color-info: #5aa7f0;
-  --color-judge-llm: #d58cf5;
-  --color-judge-det: #5ccbe0;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #f43f5e;
+  --color-info: #06b6d4;
+  --color-judge-llm: #a855f7;
+  --color-judge-det: #06b6d4;
 
-  --shadow-pop: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px -8px rgb(0 0 0 / 0.6);
-  --shadow-overlay: 0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 24px 64px -12px rgb(0 0 0 / 0.75);
+  --shadow-pop: 0 1px 0 0 rgb(255 255 255 / 0.08) inset, 0 14px 32px -6px rgb(0 0 0 / 0.75), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-overlay: 0 1px 0 0 rgb(255 255 255 / 0.1) inset, 0 28px 64px -12px rgb(0 0 0 / 0.9), 0 0 0 1px rgb(255 255 255 / 0.09);
 
-  --animate-fade-in: fade-in 160ms ease-out both;
-  --animate-rise-in: rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-scale-in: scale-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-slide-in-right: slide-in-right 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-fade-in: fade-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-rise-in: rise-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-scale-in: scale-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-in-right: slide-in-right 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-shimmer: shimmer 1.8s linear infinite;
 
   @keyframes fade-in {
     from { opacity: 0; }
@@ -75,8 +76,22 @@
 }
 
 :root {
-  --background: var(--color-canvas);
-  --foreground: var(--color-fg);
+  --background: #090a0f;
+  --foreground: #f3f4f6;
+  --color-canvas: #090a0f;
+  --color-surface: #101218;
+  --color-surface-2: #141720;
+  --color-surface-3: #1a1d27;
+  --color-surface-4: #222634;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.12);
+  --color-fg: #f3f4f6;
+  --color-fg-muted: #d1d5db;
+  --color-fg-subtle: #8e95a5;
+  --color-fg-faint: #5a6072;
+  --color-accent: #ff5c2b;
+  --color-accent-strong: #ea3a0e;
+  --color-accent-fg: #ffffff;
   color-scheme: dark;
 }
 
@@ -84,6 +99,7 @@ html,
 body {
   background: var(--color-canvas);
   color: var(--color-fg);
+  min-height: 100%;
 }
 
 body {
@@ -91,6 +107,7 @@ body {
   font-feature-settings: "ss01", "cv11";
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
+  background-color: var(--color-canvas);
 }
 
 ::selection {
@@ -163,10 +180,114 @@ select option {
 .bg-grid {
   background-image: radial-gradient(
     circle at 1px 1px,
-    color-mix(in oklab, var(--color-fg) 7%, transparent) 1px,
+    color-mix(in oklab, var(--color-fg) 6%, transparent) 1px,
     transparent 0
   );
   background-size: 24px 24px;
+}
+
+/* Reference Design Language Classes */
+
+/* 1. Dimensional Dashboard Panel */
+.panel-ref {
+  background: linear-gradient(180deg, #181b24 0%, #111319 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 10px 28px -6px rgba(0, 0, 0, 0.65);
+  border-radius: 1rem;
+}
+
+/* 2. Elevated 4-KPI Metric Card */
+.metric-card-ref {
+  background: linear-gradient(180deg, #191c26 0%, #111319 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 8px 24px -4px rgba(0, 0, 0, 0.55);
+  border-radius: 1rem;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.metric-card-ref:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, #1d202c 0%, #13151e 100%);
+  transform: translateY(-1px);
+}
+
+/* 3. Reference Active Sidebar Pill */
+.nav-pill-active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%), #1a1d26;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.09), 0 4px 12px rgba(0, 0, 0, 0.35);
+  color: #ffffff !important;
+}
+
+/* 4. Inset Wells (Search Input, Chat Composer well) */
+.inset-ref {
+  background: #0b0c10;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* 5. Reference Action Button (Coral/Orange Gradient from reference) */
+.btn-accent-ref {
+  background: linear-gradient(180deg, #ff5c2b 0%, #ea3a0e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.3), 0 4px 16px rgba(234, 58, 14, 0.35);
+  color: #ffffff;
+  transition: all 150ms ease-out;
+}
+.btn-accent-ref:hover {
+  filter: brightness(1.1);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.4), 0 6px 20px rgba(234, 58, 14, 0.45);
+}
+.btn-accent-ref:active {
+  transform: translateY(1px);
+}
+
+/* 6. Reference Tab Filter Capsule */
+.tab-capsule {
+  background: #0c0d12;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.tab-capsule-item-active {
+  background: #232734;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.tab-capsule-item {
+  color: #8e95a5;
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  transition: color 150ms;
+}
+.tab-capsule-item:hover {
+  color: #ffffff;
+}
+
+/* Legacy utility compatibility */
+.card-elevated {
+  background: linear-gradient(180deg, #181b24 0%, #111319 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 8px 24px -4px rgba(0, 0, 0, 0.55);
+  border-radius: 1rem;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-elevated:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, #1d202c 0%, #13151e 100%);
+  transform: translateY(-1px);
+}
+.glass-panel {
+  background: linear-gradient(180deg, #181b24 0%, #111319 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 10px 28px -6px rgba(0, 0, 0, 0.65);
 }
 
 @media (prefers-reduced-motion: reduce) {

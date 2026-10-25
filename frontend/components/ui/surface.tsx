@@ -9,7 +9,10 @@ export function Panel({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <section
-      className={cn("rounded-lg border border-line bg-surface", className)}
+      className={cn(
+        "rounded-2xl border border-white/[0.07] bg-gradient-to-b from-[#181b24] to-[#111319] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_10px_28px_-6px_rgba(0,0,0,0.65)]",
+        className
+      )}
       {...props}
     >
       {children}
@@ -35,20 +38,20 @@ export function PanelHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className={cn("border-b border-line px-4 py-3 sm:px-5", className)}>
+    <div className={cn("border-b border-white/[0.06] bg-white/[0.02] px-5 py-4", className)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            {icon && <span className="text-fg-subtle [&_svg]:size-4">{icon}</span>}
-            <h2 className="text-sm font-semibold tracking-tight text-fg">{title}</h2>
+            {icon && <span className="text-[#8e95a5] [&_svg]:size-4">{icon}</span>}
+            <h2 className="text-sm font-semibold tracking-tight text-white">{title}</h2>
             {count !== undefined && (
-              <span className="tabular rounded-[5px] border border-line-strong bg-surface-3 px-1.5 py-px font-mono text-[11px] text-fg-muted">
+              <span className="tabular rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-[#8e95a5]">
                 {count}
               </span>
             )}
           </div>
           {description && (
-            <p className="mt-0.5 text-[13px] leading-relaxed text-fg-subtle">{description}</p>
+            <p className="mt-0.5 text-xs text-[#8e95a5] leading-relaxed">{description}</p>
           )}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

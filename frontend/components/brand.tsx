@@ -12,10 +12,20 @@ export function BrandMark({ className }: { className?: string }) {
       aria-hidden
       fill="none"
     >
-      <rect x="0.75" y="0.75" width="22.5" height="22.5" rx="6" className="fill-surface-3 stroke-line-strong" strokeWidth="1.5" />
-      <rect x="6" y="6.5" width="12" height="2.5" rx="1.25" className="fill-accent" />
-      <rect x="6" y="10.75" width="8.5" height="2.5" rx="1.25" className="fill-accent" opacity="0.7" />
-      <rect x="6" y="15" width="5" height="2.5" rx="1.25" className="fill-accent" opacity="0.4" />
+      <defs>
+        <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ff6a3d" />
+          <stop offset="100%" stopColor="#ea3a0e" />
+        </linearGradient>
+        <linearGradient id="brandFrame" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#252936" />
+          <stop offset="100%" stopColor="#14161f" />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="22" height="22" rx="6.5" fill="url(#brandFrame)" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+      <rect x="5.5" y="6" width="13" height="2.5" rx="1.25" fill="url(#brandGrad)" />
+      <rect x="5.5" y="10.5" width="9.5" height="2.5" rx="1.25" fill="url(#brandGrad)" opacity="0.85" />
+      <rect x="5.5" y="15" width="6" height="2.5" rx="1.25" fill="url(#brandGrad)" opacity="0.55" />
     </svg>
   );
 }

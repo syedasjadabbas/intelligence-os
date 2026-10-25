@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.api.deps import get_db
+from app.core.config import settings
 from app.core.database import Base, set_session_factory
 from app.main import app
 from app.models.document import Document, DocumentChunk
@@ -191,8 +192,8 @@ async def run_hybrid_search_verification():
         # Wait for all background workers to finish
         print("\n--- Waiting for background ingestion & embedding pipelines ---")
         for doc_id, headers in [(doc1_id, headers_stark), (doc2_id, headers_stark), (doc3_id, headers_wayne)]:
-            for _ in range(20):
-                await asyncio.sleep(0.4)
+            for _ in range(60):
+                await asyncio.sleep(1.0)
                 det = await client.get(f"/api/v1/documents/{doc_id}", headers=headers)
                 if det.json()["status"] == "COMPLETED":
                     break
@@ -212,10 +213,10 @@ async def run_hybrid_search_verification():
             for c in chunks:
                 assert c.embedding is not None, "Embedding vector must not be null"
                 raw_vec = c.embedding.tolist() if hasattr(c.embedding, "tolist") else list(c.embedding)
-                assert len(raw_vec) == 1536, f"Embedding dimension must be 1536, got {len(raw_vec)}"
+                assert len(raw_vec) == settings.EMBEDDING_DIM, f"Embedding dimension must be {settings.EMBEDDING_DIM}, got {len(raw_vec)}"
                 print(f"  - Chunk {c.chunk_index}: Dim = {len(raw_vec)} | First 3 floats = {raw_vec[:3]}")
 
-        print("[PASS] 1536-dimensional float vector embeddings verified on all chunks.")
+        print(f"[PASS] {settings.EMBEDDING_DIM}-dimensional float vector embeddings verified on all chunks.")
 
         # ----------------------------------------------------------------------
         # Test 2: Exact Keyword Search

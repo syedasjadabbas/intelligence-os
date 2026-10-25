@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import settings
 from app.core.database import Base
 
 if TYPE_CHECKING:
@@ -154,7 +155,7 @@ class DocumentChunk(Base):
         nullable=True,
     )
     embedding: Mapped[Optional[List[float]]] = mapped_column(
-        Vector(1536),
+        Vector(settings.EMBEDDING_DIM),
         nullable=True,
     )
 

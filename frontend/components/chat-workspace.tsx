@@ -10,7 +10,7 @@ import {
 } from "@/lib/api";
 import { ChatMessage, AssistantAvatar } from "@/components/chat-message";
 import { CitationDrawer } from "@/components/citation-drawer";
-import { TopBar } from "@/components/app-shell";
+import { AppShell } from "@/components/app-shell";
 import { BrandMark } from "@/components/brand";
 import { Alert } from "@/components/ui/alert";
 import { Kbd } from "@/components/ui/surface";
@@ -54,6 +54,7 @@ export function ChatWorkspace() {
   const [activeMessageCitations, setActiveMessageCitations] = useState<
     CitationItem[]
   >([]);
+  const [docCount, setDocCount] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -79,18 +80,6 @@ export function ChatWorkspace() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, sending]);
-
-  // Global ⌘K / Ctrl+K shortcut to focus search input
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        textareaRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
 
   // Auto-resize textarea height as query expands
   useEffect(() => {
@@ -119,6 +108,7 @@ export function ChatWorkspace() {
   useEffect(() => {
     if (user || api.getToken()) {
       loadConversations();
+      api.listDocuments().then((docs) => setDocCount(docs.length)).catch(() => {});
     }
   }, [user, loadConversations]);
 
@@ -303,60 +293,42 @@ export function ChatWorkspace() {
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-canvas text-fg">
-      <TopBar
-        leading={
-          <button
-            type="button"
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg cursor-pointer"
-            title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-            aria-label="Toggle sidebar"
-            aria-expanded={isSidebarOpen}
-            aria-controls="chat-thread-sidebar"
-          >
-            {isSidebarOpen ? (
-              <PanelLeftClose className="size-4" />
-            ) : (
-              <PanelLeftOpen className="size-4" />
-            )}
-          </button>
-        }
-        center={
-          <button
-            type="button"
-            onClick={() => textareaRef.current?.focus()}
-            className="hidden h-8 w-full max-w-xs items-center justify-between gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-[13px] text-fg-subtle transition-colors hover:border-fg-faint hover:text-fg-muted lg:flex cursor-pointer"
-            title="Search documents & index (⌘K / Ctrl+K)"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <Search className="size-3.5 shrink-0" />
-              <span className="truncate">Ask your knowledge base…</span>
-            </span>
-            <span className="flex items-center gap-0.5">
-              <Kbd>⌘</Kbd>
-              <Kbd>K</Kbd>
-            </span>
-          </button>
-        }
-      />
-
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+    <AppShell
+      fullHeight
+      leading={
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-[#12141c] text-[#8e95a5] transition-all hover:bg-white/[0.06] hover:text-white cursor-pointer"
+          title={isSidebarOpen ? "Collapse threads" : "Expand threads"}
+          aria-label="Toggle threads sidebar"
+          aria-expanded={isSidebarOpen}
+          aria-controls="chat-thread-sidebar"
+        >
+          {isSidebarOpen ? (
+            <PanelLeftClose className="size-4" />
+          ) : (
+            <PanelLeftOpen className="size-4" />
+          )}
+        </button>
+      }
+    >
+      <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#090a0f]">
         {/* Mobile backdrop */}
         {isSidebarOpen && (
           <div
-            className="fixed inset-0 top-12 z-30 bg-black/60 animate-fade-in md:hidden"
+            className="fixed inset-0 top-14 z-30 bg-black/70 backdrop-blur-xs animate-fade-in md:hidden"
             onClick={() => setIsSidebarOpen(false)}
             aria-hidden
           />
         )}
 
-        {/* Thread sidebar */}
+        {/* Secondary Thread sidebar */}
         <aside
           id="chat-thread-sidebar"
           aria-label="Conversation threads"
           className={cn(
-            "fixed bottom-0 left-0 top-12 z-40 flex shrink-0 flex-col border-r border-line bg-surface transition-[width,transform,opacity] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] md:static md:z-auto",
+            "fixed bottom-0 left-0 top-14 z-40 flex shrink-0 flex-col border-r border-white/[0.07] bg-[#0c0e14] transition-[width,transform,opacity] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] md:static md:z-auto",
             isSidebarOpen
               ? "w-72 translate-x-0 opacity-100 md:w-64"
               : "pointer-events-none w-0 -translate-x-full overflow-hidden border-r-0 opacity-0"
@@ -368,32 +340,32 @@ export function ChatWorkspace() {
               id="btn-new-conversation"
               type="button"
               onClick={handleNewChat}
-              className="group flex h-9 w-full items-center gap-2 rounded-md border border-line-strong bg-surface-2 px-3 text-[13px] font-medium text-fg transition-colors hover:border-fg-faint hover:bg-surface-3 cursor-pointer"
+              className="group metric-card-ref flex h-9 w-full items-center gap-2 rounded-xl px-3 text-xs font-medium text-white transition-all hover:border-white/20 cursor-pointer"
             >
-              <SquarePen className="size-4 text-fg-subtle transition-colors group-hover:text-accent" />
-              New thread
+              <SquarePen className="size-4 text-[#8e95a5] transition-colors group-hover:text-[#ff7a45]" />
+              <span>New thread</span>
             </button>
           </div>
 
           <div className="flex w-72 items-center justify-between px-4 pb-1.5 pt-1 md:w-64">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-fg-subtle">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#636a7e]">
               Recent threads
             </span>
             {conversations.length > 0 && (
-              <span className="tabular font-mono text-[11px] text-fg-faint">
+              <span className="tabular font-mono text-[10px] text-[#5a6072]">
                 {conversations.length}
               </span>
             )}
           </div>
 
-          <nav className="min-h-0 w-72 flex-1 overflow-y-auto px-2 pb-3 md:w-64">
+          <nav className="min-h-0 w-72 flex-1 overflow-y-auto px-2 pb-3 md:w-64 space-y-0.5">
             {conversations.length === 0 ? (
-              <div className="mx-1 mt-1 rounded-md border border-dashed border-line-strong px-3 py-6 text-center">
-                <MessageSquare className="mx-auto mb-2 size-4 text-fg-faint" />
-                <p className="text-xs text-fg-subtle">No conversations yet.</p>
+              <div className="mx-1 mt-1 rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-3 py-6 text-center">
+                <MessageSquare className="mx-auto mb-2 size-4 text-[#5a6072]" />
+                <p className="text-xs text-[#8e95a5]">No conversations yet.</p>
               </div>
             ) : (
-              <ul className="space-y-px">
+              <ul className="space-y-0.5">
                 {conversations.map((conv) => {
                   const isActive = conv.id === activeConvId;
                   return (
@@ -403,26 +375,23 @@ export function ChatWorkspace() {
                         onClick={() => setActiveConvId(conv.id)}
                         aria-current={isActive ? "true" : undefined}
                         className={cn(
-                          "relative flex w-full items-center gap-2 rounded-md py-2 pl-3 pr-9 text-left text-[13px] transition-colors cursor-pointer",
+                          "relative flex w-full items-center gap-2 rounded-xl py-2 pl-3 pr-8 text-left text-xs transition-all cursor-pointer",
                           isActive
-                            ? "bg-surface-3 text-fg"
-                            : "text-fg-muted hover:bg-surface-2 hover:text-fg"
+                            ? "nav-pill-active"
+                            : "text-[#8e95a5] hover:bg-white/[0.04] hover:text-white border border-transparent font-normal"
                         )}
                       >
-                        {isActive && (
-                          <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-accent" aria-hidden />
-                        )}
                         <span className="min-w-0 flex-1 truncate">
                           {conv.title || "Untitled Session"}
                         </span>
-                        <span className="tabular shrink-0 font-mono text-[10px] text-fg-faint transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+                        <span className="tabular shrink-0 font-mono text-[10px] text-[#5a6072] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
                           {formatRelativeTime(conv.updated_at || conv.created_at)}
                         </span>
                       </button>
                       <button
                         type="button"
                         onClick={(e) => handleDeleteConversation(e, conv.id)}
-                        className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-fg-subtle opacity-0 transition-[opacity,color,background-color] hover:bg-danger/12 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 cursor-pointer"
+                        className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-[#8e95a5] opacity-0 transition-opacity hover:text-rose-400 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 cursor-pointer"
                         title="Delete thread"
                         aria-label={`Delete thread ${conv.title || "Untitled Session"}`}
                       >
@@ -435,13 +404,13 @@ export function ChatWorkspace() {
             )}
           </nav>
 
-          <div className="w-72 border-t border-line px-4 py-3 md:w-64">
-            <div className="flex items-center gap-2 text-xs text-fg-subtle">
-              <ShieldCheck className="size-3.5 shrink-0 text-success" />
+          <div className="w-72 border-t border-white/[0.07] px-4 py-3 md:w-64">
+            <div className="flex items-center gap-2 text-[11px] text-[#8e95a5]">
+              <ShieldCheck className="size-3.5 shrink-0 text-emerald-400" />
               <span className="truncate">
                 Isolated tenant
                 {org?.slug ? (
-                  <span className="font-mono text-fg-faint"> · {org.slug}</span>
+                  <span className="font-mono text-[#5a6072]"> · {org.slug}</span>
                 ) : null}
               </span>
             </div>
@@ -449,17 +418,17 @@ export function ChatWorkspace() {
         </aside>
 
         {/* Conversation viewport */}
-        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#090a0f]">
           <div
             ref={chatScrollRef}
             onScroll={handleScroll}
-            className="flex w-full flex-1 flex-col items-center overflow-y-auto px-4 pb-40 pt-6 sm:px-6"
+            className="flex w-full flex-1 flex-col items-center overflow-y-auto px-4 pb-44 pt-6 sm:px-6"
           >
             <div className="flex w-full max-w-3xl flex-1 flex-col">
               {activeConv && messages.length > 0 && (
-                <div className="mb-6 hidden items-center gap-2 text-xs text-fg-subtle sm:flex">
-                  <MessageSquare className="size-3.5" />
-                  <span className="truncate">{activeConv.title || "Untitled Session"}</span>
+                <div className="mb-6 hidden items-center gap-2 text-xs text-[#8e95a5] sm:flex">
+                  <MessageSquare className="size-3.5 text-[#ff7a45]" />
+                  <span className="truncate font-medium text-white">{activeConv.title || "Untitled Session"}</span>
                 </div>
               )}
 
@@ -488,17 +457,34 @@ export function ChatWorkspace() {
 
               {/* Welcome / empty conversation */}
               {messages.length === 0 && !loadingConv && (
-                <div className="my-auto flex flex-col items-center py-10 text-center animate-rise-in">
-                  <BrandMark className="mb-6 size-10" />
-                  <h1 className="text-2xl font-semibold tracking-tight text-fg text-balance sm:text-[28px]">
+                <div className="my-auto flex flex-col items-center py-8 text-center animate-rise-in">
+                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#12141c] px-3.5 py-1 text-xs text-[#8e95a5] shadow-sm">
+                    <span className="size-1.5 rounded-full bg-emerald-400" />
+                    <span>
+                      {docCount !== null ? (
+                        <>
+                          <strong className="text-white font-medium">{docCount}</strong> document{docCount === 1 ? "" : "s"} indexed in knowledge base
+                        </>
+                      ) : (
+                        "Knowledge base online"
+                      )}
+                    </span>
+                    <span className="text-[#3b404d]">·</span>
+                    <span className="font-mono text-[11px] text-[#8e95a5] font-medium">Hybrid RRF</span>
+                  </div>
+
+                  <div className="mb-4 flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-b from-[#1c1f2b] to-[#12141c] text-white shadow-lg">
+                    <BrandMark className="size-6" />
+                  </div>
+                  <h1 className="text-2xl font-bold tracking-tight text-white text-balance sm:text-[28px]">
                     Ask anything across your organization
                   </h1>
-                  <p className="mt-3 max-w-md text-sm leading-relaxed text-fg-subtle">
-                    Every response is grounded in your indexed documents with verified page
-                    citations. When the sources don&apos;t support an answer, it says so.
+                  <p className="mt-2.5 max-w-lg text-[13px] leading-relaxed text-[#8e95a5]">
+                    Every answer is strictly grounded in your indexed documents with verified page
+                    citations. When facts are absent or inconclusive, the zero-hallucination guardrail triggers.
                   </p>
 
-                  <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="mt-7 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-2 text-left">
                     {promptSuggestions.map((prompt, idx) => (
                       <button
                         key={idx}
@@ -507,10 +493,10 @@ export function ChatWorkspace() {
                           setInputQuery(prompt);
                           textareaRef.current?.focus();
                         }}
-                        className="group flex items-start justify-between gap-3 rounded-lg border border-line bg-surface px-3.5 py-3 text-left text-[13px] leading-relaxed text-fg-muted transition-colors hover:border-line-strong hover:bg-surface-2 hover:text-fg cursor-pointer"
+                        className="metric-card-ref group flex items-start justify-between gap-3 p-3.5 text-left text-xs leading-relaxed text-[#d1d5db] hover:border-white/20 hover:text-white transition-all cursor-pointer"
                       >
                         <span className="line-clamp-2">{prompt}</span>
-                        <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-fg-faint transition-colors group-hover:text-accent" />
+                        <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-[#636a7e] transition-colors group-hover:text-[#ff7a45]" />
                       </button>
                     ))}
                   </div>
@@ -533,12 +519,12 @@ export function ChatWorkspace() {
                 {sending && (
                   <div className="flex items-start gap-3 animate-rise-in" role="status">
                     <AssistantAvatar active />
-                    <div className="flex items-center gap-2 pt-0.5 text-[13px] text-fg-subtle">
+                    <div className="flex items-center gap-2 pt-0.5 text-xs text-[#8e95a5]">
                       <span>Executing hybrid retrieval &amp; synthesis</span>
                       <span className="flex gap-1" aria-hidden>
-                        <span className="size-1 rounded-full bg-fg-subtle animate-pulse" />
-                        <span className="size-1 rounded-full bg-fg-subtle animate-pulse [animation-delay:0.2s]" />
-                        <span className="size-1 rounded-full bg-fg-subtle animate-pulse [animation-delay:0.4s]" />
+                        <span className="size-1 rounded-full bg-[#ff7a45] animate-pulse" />
+                        <span className="size-1 rounded-full bg-[#ff7a45] animate-pulse [animation-delay:0.2s]" />
+                        <span className="size-1 rounded-full bg-[#ff7a45] animate-pulse [animation-delay:0.4s]" />
                       </span>
                     </div>
                   </div>
@@ -556,12 +542,12 @@ export function ChatWorkspace() {
               isAtBottom ? "translate-y-0 opacity-100" : "translate-y-24 opacity-0"
             )}
           >
-            <div className="h-10 bg-gradient-to-t from-canvas to-transparent" />
-            <div className="bg-canvas px-4 pb-4 sm:px-6 sm:pb-5">
+            <div className="h-10 bg-gradient-to-t from-[#090a0f] to-transparent" />
+            <div className="bg-[#090a0f] px-4 pb-4 sm:px-6 sm:pb-5">
               <form
                 onSubmit={handleSendMessage}
                 className={cn(
-                  "mx-auto w-full max-w-3xl rounded-xl border border-line-strong bg-surface shadow-pop transition-[border-color,box-shadow] focus-within:border-fg-faint focus-within:ring-3 focus-within:ring-accent/10",
+                  "mx-auto w-full max-w-3xl rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#14161f] to-[#0d0e14] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_20px_50px_rgba(0,0,0,0.85)] transition-all focus-within:border-white/20",
                   isAtBottom ? "pointer-events-auto" : "pointer-events-none"
                 )}
               >
@@ -581,33 +567,33 @@ export function ChatWorkspace() {
                     }
                   }}
                   placeholder="Ask about corporate policies, specs, or contracts..."
-                  className="block max-h-44 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-6 text-fg placeholder:text-fg-faint focus:outline-none"
+                  className="block max-h-44 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-6 text-white placeholder:text-[#5a6072] focus:outline-none"
                 />
 
                 <div className="flex items-center justify-between gap-3 px-3 pb-2.5 pt-1">
-                  <div className="hidden items-center gap-1.5 text-[11px] text-fg-faint sm:flex">
+                  <div className="hidden items-center gap-1.5 text-[11px] text-[#636a7e] sm:flex">
                     <Kbd>Enter</Kbd>
                     <span>to send</span>
-                    <span className="mx-1 text-line-strong">·</span>
+                    <span className="mx-1 text-[#3b404d]">·</span>
                     <Kbd>Shift</Kbd>
                     <Kbd>Enter</Kbd>
                     <span>for newline</span>
                   </div>
-                  <span className="flex items-center gap-1.5 text-[11px] text-fg-subtle sm:hidden">
-                    <ShieldCheck className="size-3.5 text-success" />
+                  <span className="flex items-center gap-1.5 text-[11px] text-[#8e95a5] sm:hidden">
+                    <ShieldCheck className="size-3.5 text-emerald-400" />
                     Isolated Tenant
                   </span>
 
                   <div className="flex items-center gap-3">
-                    <span className="hidden items-center gap-1.5 text-[11px] text-fg-subtle sm:flex">
-                      <ShieldCheck className="size-3.5 text-success" />
+                    <span className="hidden items-center gap-1.5 text-[11px] text-[#8e95a5] sm:flex">
+                      <ShieldCheck className="size-3.5 text-emerald-400" />
                       Isolated Tenant
                     </span>
                     <button
                       id="btn-send-message"
                       type="submit"
                       disabled={!inputQuery.trim() || sending}
-                      className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-fg text-canvas transition-[background-color,opacity,transform] hover:bg-white active:translate-y-px disabled:opacity-25 disabled:hover:bg-fg cursor-pointer disabled:cursor-not-allowed"
+                      className="btn-accent-ref flex size-8 shrink-0 items-center justify-center rounded-xl cursor-pointer disabled:opacity-30 disabled:pointer-events-none transition-all shadow-md"
                       title="Send query"
                       aria-label="Send query"
                     >
@@ -630,7 +616,7 @@ export function ChatWorkspace() {
                     behavior: "smooth",
                   });
                 }}
-                className="pointer-events-auto flex h-8 items-center gap-1.5 rounded-full border border-line-strong bg-surface-3 px-3.5 text-xs font-medium text-fg-muted shadow-pop transition-colors animate-rise-in hover:bg-surface-4 hover:text-fg cursor-pointer"
+                className="pointer-events-auto flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-[#181b24] px-3.5 text-xs font-medium text-[#d1d5db] shadow-lg transition-colors animate-rise-in hover:bg-[#202430] hover:text-white cursor-pointer"
               >
                 <ArrowDown className="size-3.5" />
                 Scroll to bottom
@@ -647,6 +633,6 @@ export function ChatWorkspace() {
         allCitations={activeMessageCitations}
         onSelectCitation={(newCitation) => setSelectedCitation(newCitation)}
       />
-    </div>
+    </AppShell>
   );
 }

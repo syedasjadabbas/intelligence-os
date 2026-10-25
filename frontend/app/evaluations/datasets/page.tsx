@@ -560,10 +560,14 @@ export default function DatasetsManagementPage() {
               <RefreshCw className={cn((loadingDatasets || loadingDetail) && "animate-spin")} />
             </Button>
             {isAdmin && (
-              <Button variant="primary" onClick={handleOpenCreateDataset}>
-                <Plus />
-                Create Dataset
-              </Button>
+              <button
+                type="button"
+                onClick={handleOpenCreateDataset}
+                className="btn-accent-ref flex h-8 items-center gap-1.5 rounded-xl px-3.5 text-xs font-medium cursor-pointer shadow-md"
+              >
+                <Plus className="size-3.5" />
+                <span>Create Dataset</span>
+              </button>
             )}
           </>
         }
@@ -585,26 +589,27 @@ export default function DatasetsManagementPage() {
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
           {/* Dataset list */}
           <div className="space-y-4 lg:sticky lg:top-6 lg:col-span-4">
-            <Panel>
-              <PanelHeader
-                title="Custom datasets"
-                count={datasets.length}
-                icon={<Database />}
-                actions={
-                  isAdmin ? (
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={handleOpenCreateDataset}
-                      title="Add Dataset"
-                      aria-label="Add dataset"
-                    >
-                      <Plus />
-                    </Button>
-                  ) : undefined
-                }
-                className="[&>div]:flex-row [&>div]:items-center [&>div]:justify-between"
-              />
+            <div className="panel-ref overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.02] px-4 py-3.5">
+                <div className="flex items-center gap-2">
+                  <Database className="size-4 text-[#ff7a45]" />
+                  <h2 className="text-sm font-semibold tracking-tight text-white">Custom Datasets</h2>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-[#8e95a5]">
+                    {datasets.length}
+                  </span>
+                </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleOpenCreateDataset}
+                    className="flex size-6 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[#8e95a5] hover:text-white hover:bg-white/10 cursor-pointer"
+                    title="Add Dataset"
+                    aria-label="Add dataset"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                )}
+              </div>
 
               {loadingDatasets ? (
                 <LoadingState label="Loading datasets…" />
@@ -615,16 +620,20 @@ export default function DatasetsManagementPage() {
                   description="Create a dataset to evaluate your tenant-specific documents and queries."
                   action={
                     isAdmin && (
-                      <Button variant="primary" onClick={handleOpenCreateDataset}>
-                        <Plus />
+                      <button
+                        type="button"
+                        onClick={handleOpenCreateDataset}
+                        className="btn-accent-ref flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium cursor-pointer mt-2"
+                      >
+                        <Plus className="size-3.5" />
                         Create Dataset
-                      </Button>
+                      </button>
                     )
                   }
                   className="py-10"
                 />
               ) : (
-                <ul className="max-h-[calc(100vh-320px)] space-y-px overflow-y-auto p-1.5">
+                <ul className="max-h-[calc(100vh-320px)] space-y-1 overflow-y-auto p-2">
                   {datasets.map((ds) => {
                     const isSelected = ds.id === selectedDatasetId;
                     return (
@@ -634,25 +643,24 @@ export default function DatasetsManagementPage() {
                           onClick={() => setSelectedDatasetId(ds.id)}
                           aria-current={isSelected ? "true" : undefined}
                           className={cn(
-                            "relative w-full rounded-md px-3 py-2.5 text-left transition-colors cursor-pointer",
-                            isSelected ? "bg-surface-3" : "hover:bg-surface-2"
+                            "relative w-full rounded-xl px-3 py-2.5 text-left transition-all cursor-pointer",
+                            isSelected
+                              ? "nav-pill-active"
+                              : "text-[#8e95a5] hover:bg-white/[0.04] hover:text-white border border-transparent"
                           )}
                         >
-                          {isSelected && (
-                            <span className="absolute inset-y-2.5 left-0 w-0.5 rounded-full bg-accent" aria-hidden />
-                          )}
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span
                                   className={cn(
-                                    "truncate text-[13px] font-medium",
-                                    isSelected ? "text-fg" : "text-fg-muted"
+                                    "truncate text-xs font-semibold",
+                                    isSelected ? "text-white" : "text-[#d1d5db]"
                                   )}
                                 >
                                   {ds.name}
                                 </span>
-                                <span className="shrink-0 font-mono text-[11px] text-fg-faint">
+                                <span className="shrink-0 font-mono text-[10px] text-[#636a7e]">
                                   v{ds.version}
                                 </span>
                               </div>
@@ -675,15 +683,15 @@ export default function DatasetsManagementPage() {
                   })}
                 </ul>
               )}
-            </Panel>
+            </div>
 
-            <div className="rounded-lg border border-line px-4 py-3.5">
-              <div className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-fg">
-                <BookOpen className="size-3.5 text-accent" />
-                Golden benchmark
+            <div className="panel-ref p-4">
+              <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-white">
+                <BookOpen className="size-3.5 text-[#ff7a45]" />
+                Golden Benchmark
               </div>
-              <p className="text-xs leading-relaxed text-fg-subtle">
-                The built-in <code className="font-mono text-fg-muted">golden_dataset.json</code> (50
+              <p className="text-xs leading-relaxed text-[#8e95a5]">
+                The built-in <code className="font-mono text-white">golden_dataset.json</code> (50
                 cases) is always available as a baseline reference. Custom datasets add proprietary
                 cases and ground-truth anchors.
               </p>

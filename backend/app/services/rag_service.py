@@ -5,6 +5,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import unicodedata
 import uuid
+import httpx
 import google.generativeai as genai
 from openai import AsyncOpenAI
 
@@ -21,16 +22,13 @@ logger = logging.getLogger(__name__)
 CITATION_REGEX = re.compile(r"\[Sources?:?\s*([^\]]+)\]", re.IGNORECASE)
 
 SYSTEM_INSTRUCTION = (
-    "You are Intelligence OS. Answer the user's specific question directly and concisely in 1-2 natural sentences using the facts in the provided contexts.\n"
-    "- Match organizational roles, designations, and job titles flexibly. For example:\n"
-    "  * 'supervisor' matches 'Production & Floor Supervisor'\n"
-    "  * 'manager' matches 'Operations / Branch Manager'\n"
-    "  * 'cashier' or 'finance' matches 'Head Cashier / Finance Officer'\n"
-    "  * 'CEO' matches 'Chief Executive Officer'\n"
-    "- Extract the exact person's name or metric associated with the matched role/entity.\n"
-    "- Always cite sources inline using [Source X].\n"
-    "- If and ONLY if the provided context contains truly zero relevant information or mentions of the topic, reply strictly:\n"
-    "  'I cannot find sufficient evidence in the organization's documents to answer this question.'"
+    "You are Intelligence OS, a precise enterprise knowledge assistant. Answer the user's specific question directly and concisely in 1-2 natural sentences using the facts in the provided contexts.\n"
+    "- Equivalence: Interpret domain-equivalent terms naturally based on context (e.g., 'session' and 'class', 'portal' and 'system'). Do not invent facts, but do connect equivalent phrasing present in the context.\n"
+    "- Citations: Always cite sources inline at the end of statements using [Source X] corresponding to the numbered context blocks (e.g., 'The project code is ZPL-NFS-026 [Source 1].').\n"
+    "- Directness: State the answer directly without meta-commentary, apologies, or hedging (do NOT say 'According to the context' or 'The document states'). Just state the factual answer directly.\n"
+    "- Single Response: If the facts answer the question, output ONLY the factual answer and citation. NEVER append disclaimers, warnings, or refusal statements if you have answered the question.\n"
+    "- Absent Facts: If the requested information is absent, not specified, or cannot be found in the context, reply ONLY with:\n"
+    "  'I cannot find sufficient evidence in the organization\\'s documents to answer this question.'"
 )
 
 # Configure Gemini globally using settings.GEMINI_API_KEY
@@ -398,6 +396,49 @@ class RAGService:
         """Compatibility wrapper forwarding to _generate_fallback_answer."""
         return self._generate_fallback_answer(query, source_map)
 
+    async def _generate_ollama_content(
+        self,
+        system_instruction: str,
+        prompt: str,
+    ) -> str:
+        """
+        Generates answer via local Ollama API (http://localhost:11434/api/chat).
+        Strictly local, free, non-destructive, and offline capable.
+        """
+        base_url = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+        model = self.model or getattr(settings, "LLM_MODEL", "llama3.2:1b")
+        url = f"{base_url}/api/chat"
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {
+                "temperature": 0.0,
+                "num_predict": 90,
+                "stop": ["\n\n\n", "Question:", "User:"],
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                res = await client.post(url, json=payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    msg = data.get("message", {}).get("content", "")
+                    return msg.strip()
+                else:
+                    raise RuntimeError(f"Ollama returned HTTP {res.status_code}: {res.text}")
+        except httpx.ConnectError as exc:
+            raise RuntimeError(
+                f"Cannot connect to Ollama at {base_url}. Ensure Ollama daemon is running (`ollama serve`). Error: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(f"Ollama generation failed: {exc}") from exc
+
     async def _generate_gemini_content(
         self,
         system_instruction: str,
@@ -551,9 +592,27 @@ class RAGService:
         answer: str = ""
         is_refusal: bool = False
 
-        # 2. Generate answer with configured LLM Provider (Gemini / OpenAI / Deterministic Fallback)
+        # 2. Generate answer with configured LLM Provider (Ollama / Gemini / OpenAI / Fallback)
+        provider = getattr(settings, "LLM_PROVIDER", "ollama").lower()
         gemini_key = self.gemini_api_key or settings.GEMINI_API_KEY
-        if settings.LLM_PROVIDER.lower() == "gemini" and gemini_key and gemini_key.strip():
+
+        if provider in ("ollama", "local"):
+            try:
+                user_prompt = (
+                    f"Context:\n{context_str}\n\n"
+                    f"Question: {rewritten_query}\n\n"
+                    "Concise Answer:"
+                )
+                raw_answer = await self._generate_ollama_content(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    prompt=user_prompt,
+                )
+                if raw_answer:
+                    answer = raw_answer.strip()
+            except Exception as exc:
+                logger.error(f"Local Ollama RAG generation failed: {exc}")
+                raise RuntimeError(f"Local Ollama LLM generation failed: {exc}") from exc
+        elif provider == "gemini" and gemini_key and gemini_key.strip():
             try:
                 user_prompt = (
                     f"Context:\n{context_str}\n\n"
@@ -571,7 +630,7 @@ class RAGService:
                     f"Gemini RAG generation failed: {exc}. Falling back to deterministic generator."
                 )
                 answer = ""
-        elif settings.LLM_PROVIDER.lower() == "openai" or (not answer and self.client):
+        elif provider == "openai" or (not answer and self.client):
             openai_client = self.client
             if openai_client:
                 try:

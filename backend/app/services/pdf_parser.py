@@ -17,29 +17,81 @@ class PageContent:
     heading: Optional[str] = None
 
 
-def detect_heading(line: str) -> Optional[str]:
-    """
-    Detect whether a text line qualifies as a section heading:
-    - Markdown headings (# Heading, ## Subheading)
-    - All-caps titles (e.g., 'EXECUTIVE SUMMARY', 'SECTION 1: OVERVIEW')
-    - Short colon-terminated headers (e.g., 'Key Architecture Findings:')
-    """
+import re
+
+EXCLUDED_HEADINGS = {
+    "ID", "NO", "NO.", "#", "NAME", "STATUS", "DATE", "FIELD", "DETAILS",
+    "REQUIREMENT", "NOTE", "NOTES", "VALUE", "TYPE", "PAGE", "TOTAL",
+    "ITEM", "ACTION", "DESCRIPTION", "CHECK", "ACCEPTANCE CHECK", "ROLE",
+    "ASSIGNEE", "SUMMARY", "OVERVIEW", "COMMENT", "COMMENTS", "RESULT", "RESULTS"
+}
+
+
+def is_running_header_or_footer(line: str) -> bool:
+    """Check if line is a common repetitive header/footer (e.g., Page 1, synthetic watermark)."""
     cleaned = line.strip()
     if not cleaned:
+        return True
+    if re.match(r"^Page\s+\d+(\s+of\s+\d+)?$", cleaned, re.IGNORECASE):
+        return True
+    if re.match(r"^SAMPLE\s*/\s*SYNTHETIC\s*DATA.*for\s*testing.*$", cleaned, re.IGNORECASE):
+        return True
+    return False
+
+
+def detect_heading(line: str) -> Optional[str]:
+    """
+    Detect whether a text line qualifies as a genuine section heading:
+    - Markdown headings (# Heading, ## Subheading)
+    - Numbered section titles (e.g. '1. Client overview', '7. Example project records')
+    - All-caps titles (e.g. 'CLIENT PROJECT BRIEF', 'EXECUTIVE SUMMARY')
+    - Short colon-terminated headers (e.g. 'Key Architecture Findings:')
+    Excludes table headers, questions (ending in '?'), and repetitive page watermarks.
+    """
+    cleaned = line.strip()
+    if not cleaned or is_running_header_or_footer(cleaned):
         return None
 
-    # Markdown syntax
+    # Questions ending in '?' must never be treated as section headings
+    if cleaned.endswith("?"):
+        return None
+
+    # 1. Markdown syntax
     if cleaned.startswith("#"):
         heading_text = cleaned.lstrip("#").strip()
-        return heading_text if heading_text else None
+        if heading_text and heading_text.upper() not in EXCLUDED_HEADINGS:
+            return heading_text
+        return None
 
     words = cleaned.split()
-    # Heading length heuristics: short line, not ending in period
-    if 1 <= len(words) <= 12 and len(cleaned) <= 100:
-        if cleaned.isupper() and any(c.isalpha() for c in cleaned):
+    if not (1 <= len(words) <= 12 and len(cleaned) <= 100):
+        return None
+
+    # Filter out requirement/test case identifiers (e.g., 'FR-02', 'TC-01')
+    if re.match(r"^[A-Z]{1,5}-\d{1,5}$", cleaned):
+        return None
+
+    # Exclude table headers & single-word noise
+    if cleaned.upper() in EXCLUDED_HEADINGS:
+        return None
+
+    # 2. Numbered section heading (e.g., '1. Client overview', '4. Scope and key requirements')
+    m_num = re.match(r"^(?:Section\s+\d+:?|\d+(\.\d+)*\.)\s+([A-Za-z0-9\s\-–—/&,]+)$", cleaned, re.IGNORECASE)
+    if m_num:
+        title = cleaned.rstrip(":.")
+        if any(c.isalpha() for c in title) and not title.endswith("?"):
+            return title
+
+    # 3. All-caps titles (must have >= 2 words to avoid single-word column headers like 'ID')
+    if cleaned.isupper() and any(c.isalpha() for c in cleaned):
+        if len(words) >= 2:
             return cleaned.rstrip(":")
-        if cleaned.endswith(":") and not cleaned.endswith(".."):
-            return cleaned.rstrip(":")
+
+    # 4. Short colon-terminated headers (e.g., 'Key Architecture Findings:')
+    if cleaned.endswith(":") and not cleaned.endswith(".."):
+        candidate = cleaned.rstrip(":")
+        if candidate.upper() not in EXCLUDED_HEADINGS and len(words) <= 6:
+            return candidate
 
     return None
 
@@ -86,13 +138,15 @@ def parse_pdf(file_path: Union[str, Path]) -> List[PageContent]:
         # Normalize line endings and filter blank lines
         lines = [line.strip() for line in page_text.splitlines() if line.strip()]
         page_heading = current_heading
+        found_first_on_page = False
 
         for line in lines:
             detected = detect_heading(line)
             if detected:
                 current_heading = detected
-                page_heading = detected
-                break
+                if not found_first_on_page:
+                    page_heading = detected
+                    found_first_on_page = True
 
         page_str = "\n".join(lines).strip()
         if page_str:

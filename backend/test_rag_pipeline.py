@@ -160,6 +160,14 @@ async def run_rag_pipeline_verification():
         assert res_upload2.status_code == 202
         doc2_id = res_upload2.json()["id"]
 
+        # Wait for background ingestion to complete
+        for doc_id in [doc1_id, doc2_id]:
+            for _ in range(60):
+                await asyncio.sleep(0.5)
+                det = await client.get(f"/api/v1/documents/{doc_id}", headers=headers_stark)
+                if det.json().get("status") == "COMPLETED":
+                    break
+
         # Verify documents completed in DB
         async with TestingSessionLocal() as session:
             d1 = (await session.execute(select(Document).where(Document.id == uuid.UUID(doc1_id)))).scalar_one()
