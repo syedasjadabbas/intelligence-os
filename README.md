@@ -1,113 +1,163 @@
 # Intelligence OS
 
-> Enterprise-grade private RAG platform with strict multi-tenant isolation and hybrid search capabilities.
+> Multi-tenant RAG platform with hybrid retrieval, grounded answers with citations, and an evaluation framework gated in CI.
 
 ---
 
-## Architecture Overview
+## Overview
+
+Intelligence OS is an enterprise document intelligence and retrieval-augmented generation (RAG) platform. It provides strict multi-tenant isolation, hybrid vector and lexical search, context-aware query rewriting, cross-encoder reranking, and grounded answers with source citations. The platform includes an automated evaluation framework with deterministic CI regression gating.
+
+---
+
+## Architecture & Stack
+
+### Core Components
+
+- **Backend**: FastAPI (Python 3.11+) asynchronous REST API.
+- **Primary Database & Vector Store**: PostgreSQL 16 with `pgvector` extension for 1536-dimensional vector similarity search.
+- **Cache & Message Broker**: Redis 7 for session caching and transient state.
+- **Frontend**: Next.js 16 (React 19, TypeScript, Tailwind CSS) document workspace and conversational interface located in `/frontend`.
+- **Database Migrations**: Alembic for asynchronous schema migrations.
+
+### API Endpoints (`backend/app/api/v1/endpoints/`)
+
+| Router | Base Path | Description |
+| :--- | :--- | :--- |
+| **Auth** | `/api/v1/auth` | User registration, JSON/OAuth2 password authentication, `/auth/me` identity endpoint. |
+| **Org** | `/api/v1/org` | Multi-tenant organization profile, member management, and role-based access control. |
+| **Documents** | `/api/v1/documents` | Multipart PDF upload (HTTP 202 Accepted), ingestion status polling, document retrieval, and cascading deletion. |
+| **Search** | `/api/v1/search` | Hybrid vector + full-text search with Reciprocal Rank Fusion (RRF). |
+| **Chat** | `/api/v1/chat` | Conversational RAG with query rewriting, grounded multi-turn response generation, and citation attribution. |
+| **Evaluations** | `/api/v1/evaluations` | Benchmark dataset management, async evaluation runs, cancellation, crash recovery, and regression gate checks. |
+| **Health** | `/api/v1/health` | Deep asynchronous health check validating PostgreSQL, pgvector extension, and Redis connectivity. |
+
+---
+
+## Retrieval Pipeline
+
+The retrieval pipeline guarantees strict tenant boundaries and retrieves high-precision context:
+
+1. **Tenant Isolation**:
+   - `org_id` is extracted directly from the verified JWT token claims by `get_current_tenant`.
+   - Every database model (`User`, `Document`, `DocumentChunk`, `Conversation`, `EvaluationRun`) enforces foreign-key scoping to `organizations.id`.
+   - All retrieval queries strictly apply `WHERE org_id = :org_id` across vector, keyword, and conversation branches.
+   - Files are partitioned on disk by tenant under `uploads/{org_id}/{document_id}.pdf`.
+
+2. **Parallel Hybrid Search**:
+   - **Vector Search**: Generates 1536-dimensional query embeddings and computes cosine distance (`<=>`) backed by a PostgreSQL `HNSW` index (`vector_cosine_ops`).
+   - **Full-Text Keyword Search**: Generates English text vectors via `to_tsvector('english', content)` and evaluates queries via `plainto_tsquery('english', query)` scored with `ts_rank_cd`, backed by a `GIN` index.
+
+3. **Reciprocal Rank Fusion (RRF)**:
+   - Fuses ranked candidate lists using reciprocal rank scores:
+     $$\text{RRF\_Score}(d) = \frac{w_{\text{vec}}}{k + \text{rank}_{\text{vec}}(d)} + \frac{w_{\text{kw}}}{k + \text{rank}_{\text{kw}}(d)}$$
+   - Default parameters: $k = 60$, $w_{\text{vec}} = 0.5$, $w_{\text{kw}} = 0.5$.
+
+4. **Query Rewriting & Cross-Encoder Reranking**:
+   - Conversational follow-ups are rewritten into standalone search queries based on prior turns.
+   - Retrieved candidate chunks are reranked using cross-encoders to ensure top-rank relevance before synthesis.
+
+5. **Grounded Answers with Citations**:
+   - Synthesizer prompts enforce page-level citation anchors `[DocTitle, p. X]`.
+   - Responses lacking document grounding or attempting out-of-scope answers trigger explicit refusals.
+
+---
+
+## Evaluation Framework
+
+For detailed architecture, configuration, and thresholds, see the [Evaluation Framework Documentation](backend/app/eval/README.md).
+
+- **50-Case Golden Benchmark**: Standardized benchmark covering single-hop, multi-hop, coreference resolution, semantic search, retrieval edge cases, citation sensitivity, and unanswerable/adversarial queries.
+- **Dual Judge Modes**:
+  - **Deterministic CI Judge** (`--judge deterministic --offline`): Fast, fully offline lexical and mathematical scoring (Recall@k, MRR, nDCG@5, Citation Precision/Coverage, Refusal Rates) with zero external API dependencies.
+  - **LLM Judge** (`--judge llm`): Semantic evaluation measuring Faithfulness, Correctness, and Completeness using Gemini or OpenAI.
+- **Asynchronous Execution & Recovery**: Long-running evaluation jobs run as background tasks with polling status, graceful cancellation support, and crash recovery.
+- **CI Regression Gate**: Integrated into `.github/workflows/rag-evaluation.yml`. Automatically halts PRs and pushes if metrics fall below regression thresholds.
+
+### Benchmark Results
+
+The following results were measured running the deterministic offline benchmark:
+
+```bash
+python -m app.eval.cli --judge deterministic --offline --check-regression --db-url sqlite+aiosqlite:///ci_eval.db --output-json eval-results.json
+```
+
+| Metric | Target Threshold | Actual Result | Status |
+| :--- | :---: | :---: | :---: |
+| **Total Test Cases** | 50 | 50 | COMPLETE |
+| **Passed Test Cases** | >= 45 | 48 | PASS |
+| **Overall Pass Rate** | >= 90.0% | 96.0% | PASS |
+| **Recall@3** | >= 0.8500 | 0.9111 | PASS |
+| **Recall@5** | >= 0.9000 | 0.9667 | PASS |
+| **Mean Reciprocal Rank (MRR)** | >= 0.8000 | 0.8458 | PASS |
+| **nDCG@5** | >= 0.8500 | 0.8662 | PASS |
+| **Citation Precision** | >= 0.8500 | 1.0000 | PASS |
+| **Citation Coverage** | >= 0.9000 | 1.0000 | PASS |
+| **Correct Refusal Rate (CRR)** | == 1.0000 | 1.0000 | PASS |
+| **False Refusal Rate (FRR)** | <= 0.0500 | 0.0000 | PASS |
+| **Mean Latency** | <= 350.0 ms | 15.74 ms | PASS |
+| **P95 Latency** | <= 600.0 ms | 20.32 ms | PASS |
+| **CI Regression Gate** | 11 / 11 checks | 11 / 11 checks | PASSED |
+
+*Note: Offline deterministic mode with mock embeddings; not a measure of live-model quality.*
+
+---
+
+## Project Structure
 
 ```
-Intelligence OS/
-├── docker-compose.yml        # PostgreSQL 16 (pgvector) & Redis 7 services
-├── .env.example              # Root environment template
-├── .gitignore                # Git ignore rules
+intelligence-os/
+├── docker-compose.yml           # PostgreSQL 16 (pgvector) & Redis 7 services
+├── .env.example                 # Root environment template
+├── .github/
+│   └── workflows/
+│       └── rag-evaluation.yml   # CI deterministic evaluation regression gate
 ├── backend/
-│   ├── alembic/              # Database migration versions & async env.py
-│   │   ├── versions/
-│   │   │   ├── 0001_initial_multi_tenant_schema.py
-│   │   │   └── 0002_add_fts_and_hnsw_indexes.py
-│   │   └── env.py
-│   ├── alembic.ini           # Alembic configuration
-│   ├── run_migrations.py     # Resilient migration runner
-│   ├── test_auth_flow.py     # Multi-tenant RBAC & auth verification suite
-│   ├── test_ingestion_flow.py# Document parsing, chunking & ingestion test suite
-│   ├── test_hybrid_search.py # Vector embeddings, FTS & RRF retrieval test suite
+│   ├── .env.example             # Backend environment template
+│   ├── alembic/                 # Asynchronous schema migrations
+│   │   └── versions/
 │   ├── app/
-│   │   ├── api/
-│   │   │   ├── v1/
-│   │   │   │   ├── endpoints/
-│   │   │   │   │   ├── auth.py      # Registration, Login (JSON/OAuth2), /auth/me
-│   │   │   │   │   ├── documents.py # PDF Upload (202), status, retrieval, deletion
-│   │   │   │   │   ├── health.py    # Asynchronous deep healthcheck endpoint
-│   │   │   │   │   ├── org.py       # Multi-tenant user & org management
-│   │   │   │   │   └── search.py    # Hybrid vector + keyword search with RRF
-│   │   │   │   └── api.py           # v1 API Router aggregation
-│   │   │   └── deps.py              # Auth, RBAC, tenant isolation & DB dependencies
-│   │   ├── core/
-│   │   │   ├── config.py            # Pydantic v2 BaseSettings configuration
-│   │   │   ├── database.py          # SQLAlchemy AsyncPG engine & session helpers
-│   │   │   └── security.py          # Passlib bcrypt & JWT generation/decoding
-│   │   ├── models/                  # SQLAlchemy 2.0 ORM models
-│   │   │   ├── organization.py      # Organization (tenant root)
-│   │   │   ├── user.py              # User (ADMIN / MEMBER roles)
-│   │   │   ├── document.py          # Document & DocumentChunk (Vector 1536)
-│   │   │   └── conversation.py      # Conversation & Message (JSONB citations/traces)
-│   │   ├── schemas/                 # Pydantic request & response models
-│   │   │   ├── auth.py              # Token, OrgRegisterRequest, LoginRequest
-│   │   │   ├── document.py          # DocumentUploadResponse, DocumentResponse, DocumentDetailResponse
-│   │   │   ├── health.py            # HealthResponse
-│   │   │   ├── org.py               # OrgResponse, OrgCreate
-│   │   │   ├── search.py            # SearchRequest, SearchResponse, SearchResultItemResponse
-│   │   │   └── user.py              # UserResponse, UserProfileResponse, UserCreate
-│   │   ├── services/                # Core business logic services
-│   │   │   ├── chunker.py           # Context-preserving token chunker (tiktoken cl100k_base)
-│   │   │   ├── document_service.py  # Ingestion validator & async worker pipeline
-│   │   │   ├── embedding_service.py # Vector embeddings (OpenAI + deterministic fallback)
-│   │   │   ├── pdf_parser.py        # PDF page extractor & heading detector
-│   │   │   └── retrieval_service.py # Parallel vector + keyword hybrid search & RRF
-│   │   └── main.py                  # FastAPI application entrypoint & CORS setup
-│   ├── requirements.txt             # Backend dependencies
-│   ├── .env.example                 # Backend environment template
-│   └── .env                         # Local development configuration
-└── README.md                        # Project documentation
+│   │   ├── api/v1/endpoints/    # auth, org, documents, search, chat, evaluations, health
+│   │   ├── core/                # config, database, security
+│   │   ├── eval/                # Evaluation benchmark, CLI, runner, judges, metrics
+│   │   ├── models/              # SQLAlchemy ORM models (tenant-scoped)
+│   │   ├── schemas/             # Pydantic request and response schemas
+│   │   ├── services/            # chunker, document_service, embedding, pdf_parser, retrieval
+│   │   └── main.py              # FastAPI app and middleware
+│   ├── requirements.txt         # Backend Python dependencies
+│   ├── run_migrations.py        # Database migration runner
+│   └── test_*.py                # Component and integration test suites
+├── frontend/
+│   ├── app/                     # Next.js App Router (chat, documents, evaluations)
+│   ├── components/              # UI components and navigation
+│   ├── package.json             # Frontend dependencies
+│   └── tests/                   # Contract and UI tests
+├── run_dev.ps1                  # Development startup script (PowerShell)
+├── run_dev.bat                  # Development startup script (CMD)
+└── README.md
 ```
 
 ---
 
-## Multi-Tenant Data Isolation & Hybrid Search Architecture
+## Getting Started
 
-1. **Strict Tenant Scoping (`org_id`)**:
-   - Every single entity (`User`, `Document`, `DocumentChunk`, `Conversation`) is bound to an `organizations.id` via foreign keys with `ON DELETE CASCADE`.
-   - The FastAPI dependency `get_current_tenant` extracts `org_id` directly from the authenticated JWT token signature, preventing callers from spoofing tenant IDs.
-   - Files are physically stored on disk under `{UPLOAD_DIR}/{org_id}/{document_id}.pdf` to prevent path traversal and cross-tenant collision.
-   - All retrieval queries (both vector cosine distance and full-text keyword search) strictly enforce `WHERE org_id = :org_id` on every query branch.
+### 1. Prerequisites
 
-2. **Parallel Hybrid Search with Reciprocal Rank Fusion (RRF)**:
-   - **Vector Branch**: Generates 1536-dimensional query embeddings and computes cosine distance via pgvector's `<=>` operator (accelerated by an HNSW index with `vector_cosine_ops`).
-   - **Full-Text Keyword Branch**: Evaluates lexical relevance using PostgreSQL `to_tsvector('english', content)` and `plainto_tsquery('english', query)` scored with `ts_rank_cd` (accelerated by a GIN index).
-   - **RRF Merge**: Combines ranked candidate sets using the reciprocal rank fusion formula:
-     $$\text{RRF\_Score}(d) = \frac{w_{\text{vec}}}{\text{RRF\_K} + \text{rank}_{\text{vec}}(d)} + \frac{w_{\text{kw}}}{\text{RRF\_K} + \text{rank}_{\text{kw}}(d)}$$
-   - Deduplicates chunks by `chunk_id` and attaches complete citation metadata (`document_title`, `page_number`, `section_heading`, `content`, `score`).
+- Docker and Docker Compose
+- Python 3.11+
+- Node.js 18+ and npm
 
-3. **Embedding Service (`embedding_service.py`)**:
-   - Integrates with OpenAI's `text-embedding-3-small` API.
-   - Features a zero-dependency deterministic feature-hashing mock vector generator when `OPENAI_API_KEY` is not provided, allowing offline testing and CI workflows to run reliably without network or cost overhead.
-
----
-
-## Infrastructure Services (Docker)
-
-1. **PostgreSQL 16 with pgvector (`pgvector/pgvector:pg16`)**
-   - Host Port: `5432`
-   - Persistent Volume: `postgres_data`
-   - Extensions: `uuid-ossp`, `vector`
-   - Indexes: HNSW on `embedding`, GIN on `to_tsvector('english', content)`, composite on `(org_id, document_id)`
-
-2. **Redis 7 Alpine (`redis:7-alpine`)**
-   - Host Port: `6379`
-   - Persistent Volume: `redis_data`
-
-### Starting Docker Services
+### 2. Start Infrastructure
 
 ```bash
 docker compose up -d
 ```
 
----
+This starts:
+- PostgreSQL 16 with pgvector on port `5432`
+- Redis 7 on port `6379`
 
-## Backend Setup & Verification
-
-### 1. Environment Setup
+### 3. Backend Setup
 
 ```bash
 cd backend
@@ -120,63 +170,75 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-### 2. Run Database Migrations
+Run database migrations:
 
 ```bash
-# Direct alembic CLI
-alembic upgrade head
-
-# Or using the resilient connectivity-checking runner:
 python run_migrations.py
+# Or directly via alembic:
+alembic upgrade head
 ```
 
-### 3. Run Verification Test Suites
+Start the FastAPI backend:
 
 ```bash
-# Step 2 Verification (Auth, RBAC, Multi-Tenant User Management)
-python test_auth_flow.py
-
-# Step 3 Verification (PDF Ingestion, Parsing, Chunking & Background Worker)
-python test_ingestion_flow.py
-
-# Step 4 Verification (Vector Embeddings, pgvector, FTS Keyword & RRF Hybrid Search)
-python test_hybrid_search.py
-
-# Step 5 Verification (Query Rewriting, Cross-Encoder Reranking, Grounded RAG & Citations)
-python test_rag_pipeline.py
-
-# Step 6 Verification (Frontend/Backend End-to-End Contract & Guardrail Verification)
-python test_frontend_e2e_contract.py
-```
-
-### 4. Running the Complete System (Backend + Frontend)
-
-To launch both the FastAPI backend and Next.js frontend concurrently:
-
-```powershell
-# PowerShell
-.\run_dev.ps1
-
-# Or Windows Command Prompt
-run_dev.bat
-```
-
-Or run independently:
-
-```bash
-# Terminal 1: Backend
-cd backend
-.\.venv\Scripts\activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-# Terminal 2: Frontend
+- API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Health Check: [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
+
+### 4. Frontend Setup
+
+```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-- **Frontend Application**: [http://localhost:3000](http://localhost:3000)
-- **Document Admin Console**: [http://localhost:3000/documents](http://localhost:3000/documents)
-- **FastAPI Backend**: [http://localhost:8000](http://localhost:8000)
-- **API Documentation (Swagger UI)**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Web Interface: [http://localhost:3000](http://localhost:3000)
+
+Alternatively, launch both services together using the root helper:
+
+```powershell
+.\run_dev.ps1
+```
+
+---
+
+## Test Suites
+
+All test suites can be executed inside the `backend` directory with the virtual environment activated:
+
+```bash
+cd backend
+
+# Authentication, RBAC, and multi-tenant scoping
+python test_auth_flow.py
+
+# PDF parsing, token chunking, and ingestion pipeline
+python test_ingestion_flow.py
+
+# Vector embeddings, pgvector HNSW, and FTS keyword search
+python test_hybrid_search.py
+
+# Query rewriting, reranking, and citation generation
+python test_rag_pipeline.py
+
+# Frontend-to-backend API contract verification
+python test_frontend_e2e_contract.py
+
+# Evaluation metrics and regression calculation tests
+python test_eval_metrics.py
+python test_eval_regression.py
+
+# Evaluation runner and background cancellation/recovery
+python test_eval_runner.py
+python test_eval_cancellation_recovery.py
+
+# Evaluation dataset and run API endpoints
+python test_eval_datasets.py
+python test_eval_api.py
+```
